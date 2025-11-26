@@ -35,6 +35,9 @@ npm install
 
 # 启动开发服务器
 npm run dev
+
+# 访问地址
+# 开发服务器默认运行在 http://localhost:5173
 ```
 
 ### 构建
@@ -82,22 +85,65 @@ npm run preview
 #### 控制转移指令
 - `JMP` - 无条件跳转
 - `JZ/JNZ/JE/JNE` - 条件跳转
+- `JG/JL/JGE/JLE` - 有符号比较跳转
 - `LOOP` - 循环
 - `CALL/RET` - 子程序调用
 
 #### 中断指令
-- `INT 21H` - DOS 中断（支持字符输入输出）
+- `INT 10H` - BIOS 视频中断（屏幕控制、光标定位）
+  - `AH=02H` - 设置光标位置
+  - `AH=06H` - 清屏/滚动窗口
+  - `AH=09H` - 显示字符和属性
+- `INT 21H` - DOS 中断（字符输入输出）
+  - `AH=01H` - 键盘输入
+  - `AH=02H` - 字符输出
+  - `AH=09H` - 字符串输出
+  - `AH=4CH` - 程序终止
+
+### 数据定义伪指令
+
+- `DB` - 定义字节（Byte）
+- `DW` - 定义字（Word）
+- `DD` - 定义双字（Double Word）
+- `DUP` - 重复定义操作符
+- `SEGMENT/ENDS` - 段定义
+- `OFFSET` - 取偏移地址
 
 ### 示例程序
 
-项目内置了多个示例程序：
+项目内置了 6 个完整的示例程序：
 
-- **综合演示** - 展示基础指令和屏幕控制
-- **LOOP 测试** - 循环指令功能测试
-- **冒泡排序** - 数组排序算法演示
-- **斐波那契数列** - 递推数列计算
-- **字符串处理** - 字符串反转示例
-- **简易计算器** - 四则运算演示
+1. **综合演示 (default)** - 展示基础指令和屏幕控制
+   - 屏幕背景色设置
+   - 光标定位
+   - 字符串输出
+   - 寄存器运算
+   - 循环演示
+
+2. **LOOP 测试 (loop_test)** - 循环指令功能测试
+   - LOOP 指令用法
+   - 计数器应用
+   - 屏幕定位输出
+
+3. **冒泡排序 (bubble_sort)** - 数组排序算法演示
+   - 嵌套循环
+   - 数据比较与交换
+   - 内存数组操作
+
+4. **斐波那契数列 (fibonacci)** - 递推数列计算
+   - 数列计算
+   - 可视化显示（星号图表）
+   - 循环累加
+
+5. **字符串处理 (string_demo)** - 字符串反转示例
+   - 字符串长度计算
+   - 字符数组操作
+   - 反向遍历
+
+6. **简易计算器 (calculator)** - 四则运算演示
+   - 加减乘除运算
+   - 多次计算演示
+   - 结果验证
 
 ## 🛠️ 技术栈
 
@@ -110,18 +156,26 @@ npm run preview
 ## 📁 项目结构
 
 ```
-masm-simulator/
+masm/
 ├── src/
-│   ├── components/      # React 组件
-│   ├── hooks/          # 自定义 Hooks
-│   ├── utils/          # 工具函数
-│   ├── constants/      # 常量定义
-│   ├── App.jsx         # 主应用组件
-│   └── main.jsx        # 入口文件
-├── index.html          # HTML 模板
-├── package.json        # 项目配置
-├── vite.config.js      # Vite 配置
-└── tailwind.config.js  # Tailwind 配置
+│   ├── components/
+│   │   └── RegisterCard.jsx    # 寄存器显示组件
+│   ├── hooks/
+│   │   └── useAssembler.js     # 汇编器核心逻辑 Hook
+│   ├── utils/
+│   │   └── assembler.js        # 指令解析和执行引擎
+│   ├── constants/
+│   │   └── index.js            # 常量定义（内存大小、示例程序等）
+│   ├── App.jsx                 # 主应用组件
+│   ├── main.jsx                # 入口文件
+│   └── index.css               # 全局样式
+├── index.html                  # HTML 模板
+├── package.json                # 项目配置
+├── vite.config.js              # Vite 配置
+├── tailwind.config.js          # Tailwind 配置
+├── postcss.config.js           # PostCSS 配置
+├── LICENSE                     # MIT 许可证
+└── README.md                   # 项目文档
 ```
 
 ## 🎯 功能特性
@@ -136,10 +190,12 @@ masm-simulator/
 
 ### 可视化
 
-- 📊 实时寄存器显示
-- 🚩 标志位状态
-- 💾 内存视图
-- 📺 字符显示器
+- 📊 实时寄存器显示（AX, BX, CX, DX, SP, BP, SI, DI）
+- 🚩 标志位状态（ZF, SF, CF, OF, PF, AF）
+- 💾 内存视图（64KB 地址空间）
+- 📺 字符显示器（80×25 彩色文本模式）
+- 📝 执行日志（指令追踪）
+- 🎯 断点管理
 
 ## 🤝 贡献
 
@@ -157,19 +213,66 @@ masm-simulator/
 
 ## 👥 作者
 
-- 你的名字 - [GitHub](https://github.com/chizukuo)
+- chizukuo - [GitHub](https://github.com/chizukuo)
 
 ## 🙏 致谢
 
 - 感谢所有贡献者
 - 灵感来源于经典的 8086 汇编学习环境
+- 基于 8086/8088 处理器指令集设计
+
+## 🔧 核心功能
+
+### 支持的寻址方式
+- 立即数寻址：`MOV AX, 1234H`
+- 寄存器寻址：`MOV AX, BX`
+- 直接寻址：`MOV AX, [1000H]`
+- 寄存器间接寻址：`MOV AX, [BX]`
+- 变址寻址：`MOV AX, [BX+SI]`
+- 相对寻址：`MOV AX, VARNAME`
+
+### 段结构支持
+```assembly
+DATA SEGMENT
+    ; 数据定义
+DATA ENDS
+
+CODE SEGMENT
+    ; 代码指令
+CODE ENDS
+```
+
+## ⚠️ 已知限制
+
+- 不支持浮点运算指令
+- 不支持字符串指令（MOVS, CMPS 等）
+- 中断功能有限（仅支持基本的 INT 10H 和 INT 21H）
+- 不支持宏定义
+- 不支持过程（PROC/ENDP）定义
+
+## 🐛 问题排查
+
+### 程序无法运行
+1. 检查代码段是否以 `END START` 结尾
+2. 确保标签定义使用冒号（如 `LABEL:`）
+3. 验证数据段和代码段正确闭合
+
+### 显示乱码
+1. 确保字符串以 `$` 结尾
+2. 检查 INT 21H 功能号是否正确（AH=09H 用于字符串输出）
+3. 验证数据段寄存器 DS 已正确初始化
+
+### 内存访问错误
+1. 检查数组索引是否越界
+2. 确保变量在 DATA SEGMENT 中已定义
+3. 验证寻址方式语法正确
 
 ## 📮 联系方式
 
 如有问题或建议，请通过以下方式联系：
 
 - 提交 Issue
-- 发送邮件至: chizukuo@icloud.comm
+- 发送邮件至: chizukuo@icloud.com
 
 ---
 
