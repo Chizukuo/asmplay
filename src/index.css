@@ -15,16 +15,17 @@
 }
 
 /* ===== 响应式断点 ===== */
-@media (max-width: 375px) {
-  .monitor-grid {
-    font-size: 10px !important;
-    padding: 4px !important;
-  }
-  
+/* 移除旧的字体大小调整，现在使用 transform scale */
+@media (max-width: 480px) {
   .glass-effect {
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
   }
+}
+
+/* 安全区域适配 (iPhone X等) */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* ===== 动画效果 ===== */
@@ -321,4 +322,314 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
   color: #d4d4d4;
   pointer-events: none;
   z-index: 5;
+}
+
+/* ===== 组件样式提取 ===== */
+
+@layer components {
+  /* 布局容器 */
+  .app-container {
+    @apply h-screen bg-gradient-to-br from-[#0a0a0a] via-[#0f0f0f] to-[#1a1a1a] text-neutral-200 font-sans flex flex-col overflow-hidden selection:bg-yellow-900 selection:text-yellow-100;
+  }
+
+  .app-header {
+    @apply glass-effect border-b border-neutral-800/50 p-3 sm:p-4 flex flex-col sm:flex-row flex-wrap justify-between items-center shrink-0 z-20 backdrop-blur-xl shadow-lg gap-3;
+  }
+
+  /* 头部按钮通用样式 */
+  .header-btn {
+    @apply flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-neutral-800 to-neutral-900 hover:from-neutral-700 hover:to-neutral-800 border border-neutral-700 rounded-lg text-[10px] sm:text-xs font-medium transition-all duration-300 shadow-md hover:shadow-xl card-hover;
+  }
+  
+  .header-btn-purple { @apply hover:border-purple-500/50 hover:shadow-purple-500/20; }
+  .header-btn-red { @apply hover:border-red-500/50 hover:shadow-red-500/20; }
+  .header-btn-yellow { @apply hover:border-yellow-500/50 hover:shadow-yellow-500/20; }
+  .header-btn-orange { @apply hover:border-orange-500/50 hover:shadow-orange-500/20; }
+  .header-btn-blue { @apply hover:border-blue-500/50 hover:shadow-blue-500/20; }
+
+  /* 面板布局 */
+  .panel-left {
+    @apply w-full lg:w-5/12 flex flex-col border-b lg:border-b-0 lg:border-r border-neutral-800/50 bg-gradient-to-br from-[#0d0d0d] to-[#111] shadow-2xl transition-all duration-300;
+  }
+
+  .panel-right {
+    @apply w-full lg:w-7/12 flex flex-col bg-gradient-to-br from-[#050505] to-[#0a0a0a] transition-all duration-300;
+  }
+
+  /* 编辑器相关 */
+  .editor-header-bar {
+    @apply px-4 py-3 glass-effect text-xs font-semibold text-neutral-300 border-b border-neutral-800/50 flex justify-between items-center backdrop-blur-sm;
+  }
+
+  .editor-status-badge {
+    @apply px-3 py-1 rounded-full text-[10px] font-bold tracking-wider transition-all duration-300;
+  }
+  .editor-status-badge.active {
+    @apply bg-gradient-to-r from-yellow-900/50 to-yellow-800/30 text-yellow-300 animate-pulse border border-yellow-600/50 shadow-lg shadow-yellow-500/20;
+  }
+  .editor-status-badge.idle {
+    @apply bg-neutral-800/80 text-neutral-400 border border-neutral-700;
+  }
+
+  .line-numbers-col {
+    @apply w-12 bg-[#0a0a0a] text-yellow-600/50 text-right pr-3 py-4 text-sm font-mono leading-6 select-none border-r border-neutral-800 z-10 overflow-hidden;
+  }
+
+  .editor-toolbar {
+    @apply p-3 sm:p-4 glass-effect border-t border-neutral-800/50 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center backdrop-blur-sm;
+  }
+
+  .toolbar-btn {
+    @apply p-2.5 rounded-lg bg-gradient-to-br from-neutral-800 to-neutral-900 hover:from-neutral-700 hover:to-neutral-800 text-neutral-300 border border-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300 card-hover;
+  }
+  .toolbar-btn-blue { @apply hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/20; }
+  .toolbar-btn-green { @apply hover:border-green-500/50 hover:shadow-lg hover:shadow-green-500/20; }
+
+  .play-btn {
+    @apply flex items-center gap-2 px-5 sm:px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 shadow-lg transform hover:scale-105 active:scale-95 flex-1 sm:flex-none justify-center;
+  }
+  .play-btn.playing { @apply bg-gradient-to-r from-red-900 to-red-800 hover:from-red-800 hover:to-red-700 text-red-100 shadow-red-900/50; }
+  .play-btn.idle { @apply btn-primary text-black shadow-yellow-900/50; }
+
+  /* 寄存器卡片 */
+  .register-card {
+    @apply bg-[#111] p-2 rounded border border-neutral-800 flex flex-col items-center min-w-[60px];
+  }
+  .register-name { @apply text-[10px] font-bold text-neutral-500 mb-1; }
+  .register-val { @apply font-mono text-sm text-yellow-400 tracking-wider; }
+
+  /* 内存视图 */
+  .memory-view-container { @apply flex flex-col h-full font-mono text-[10px]; }
+  .memory-nav-btn { @apply px-1.5 py-0.5 bg-neutral-800 rounded hover:bg-neutral-700 text-neutral-400 text-xs; }
+  .memory-addr-input { @apply bg-neutral-900 border border-neutral-700 w-16 pl-5 pr-1 py-0.5 text-center rounded focus:border-yellow-500 outline-none text-yellow-400 text-[10px]; }
+  .memory-grid { @apply flex-1 overflow-auto custom-scrollbar bg-[#080808] p-1.5 rounded border border-neutral-800; }
+  .memory-row { @apply flex hover:bg-white/5 text-[10px]; }
+
+  /* 变量监视 */
+  .watch-input { @apply flex-1 bg-neutral-900 border border-neutral-700 px-2 py-1 rounded text-xs text-neutral-200 focus:border-yellow-500 outline-none; }
+  .watch-add-btn { @apply px-3 py-1 bg-yellow-600 hover:bg-yellow-500 text-black rounded text-xs font-bold transition-colors; }
+  .watch-item { @apply glass-effect p-2 rounded border border-neutral-800 flex justify-between items-center; }
+
+  /* 模态框 */
+  .modal-overlay { @apply fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm; }
+  .modal-content { @apply glass-effect max-w-2xl w-full rounded-2xl border border-neutral-700 p-6 shadow-2xl; }
+  .example-card { @apply glass-effect p-4 rounded-lg border border-neutral-700 hover:border-yellow-500/50 text-left transition-all duration-300 card-hover; }
+
+  /* 移动端控件 */
+  .mobile-nav-bar { @apply lg:hidden shrink-0 bg-[#0a0a0a] border-t border-neutral-800 flex justify-around items-center pb-safe z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]; }
+  .mobile-nav-btn { @apply flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors; }
+  .mobile-nav-btn.active { @apply text-yellow-400 bg-white/5; }
+  .mobile-nav-btn.inactive { @apply text-neutral-500 hover:text-neutral-300; }
+
+  .mobile-control-panel { @apply lg:hidden shrink-0 bg-[#111] border-b border-neutral-800 p-3 flex flex-col gap-2 shadow-lg z-20; }
+  
+  /* 监视器 */
+  .monitor-bezel { @apply relative bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800 p-4 sm:p-5 rounded-2xl shadow-2xl border-2 border-neutral-600; }
+  .monitor-screen-container { @apply relative bg-black border-4 border-[#1a1a1a] rounded-lg overflow-hidden shadow-[inset_0_0_30px_rgba(0,0,0,1)] glow-border; }
+
+  /* Logo & Header Elements */
+  .logo-container {
+    @apply bg-gradient-to-br from-yellow-900/30 to-yellow-900/10 p-2.5 sm:p-3 rounded-xl border border-yellow-900/50 shadow-lg;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .app-title {
+    @apply font-bold text-lg sm:text-xl text-neutral-100 tracking-tight flex items-center gap-2;
+  }
+
+  .app-badge {
+    @apply text-yellow-500 text-[10px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full bg-gradient-to-r from-yellow-900/30 to-yellow-800/20 border border-yellow-700/50 shadow-inner;
+  }
+
+  .app-subtitle {
+    @apply text-[10px] sm:text-xs text-neutral-400 font-medium;
+  }
+
+  /* Editor Area Details */
+  .editor-area {
+    @apply flex-1 relative overflow-hidden bg-[#0d0d0d];
+  }
+
+  .editor-highlight-layer {
+    @apply absolute inset-0 w-full h-full pl-3 p-4 text-sm leading-6 font-mono whitespace-pre overflow-hidden pointer-events-none;
+  }
+
+  .editor-textarea {
+    @apply absolute inset-0 w-full h-full bg-transparent pl-3 p-4 text-sm leading-6 outline-none resize-none text-transparent caret-white font-mono whitespace-pre z-10 custom-scrollbar;
+  }
+
+  .breakpoint-gutter-item {
+    @apply h-6 flex items-center justify-end gap-1 cursor-pointer hover:bg-white/5 transition-colors relative;
+  }
+
+  /* Speed Control */
+  .speed-control-panel {
+    @apply glass-effect bg-gradient-to-br from-neutral-900/80 to-neutral-800/60 px-3 py-2 rounded-lg border border-neutral-700/50 hover:border-yellow-500/50 transition-all duration-300 shadow-md hover:shadow-lg hover:shadow-yellow-500/10;
+  }
+
+  .speed-btn {
+    @apply px-2.5 py-1 rounded text-xs font-semibold transition-all duration-200 bg-neutral-800/80 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 border border-neutral-700/50;
+  }
+
+  .speed-btn.active {
+    @apply bg-gradient-to-r from-yellow-500 to-yellow-600 text-black shadow-lg shadow-yellow-500/30 scale-105 border-transparent;
+  }
+
+  /* Log Panel */
+  .log-panel {
+    @apply flex-1 glass-effect rounded-lg border border-neutral-800/50 p-3 flex flex-col min-h-0 shadow-xl;
+  }
+
+  .log-header {
+    @apply text-[10px] font-bold text-yellow-400 mb-2 flex items-center gap-2 uppercase tracking-wider bg-yellow-900/20 px-2 py-1.5 rounded border border-yellow-700/50;
+  }
+
+  .log-content {
+    @apply flex-1 overflow-auto custom-scrollbar font-mono text-[10px] space-y-1 pr-1;
+  }
+
+  .log-entry {
+    @apply text-yellow-300/90 border-l-2 border-yellow-600/50 pl-2 py-1 hover:bg-yellow-900/10 transition-all duration-200 rounded-r bg-neutral-900/30 backdrop-blur-sm;
+    animation: fade-in-up 0.3s ease-out;
+  }
+
+  /* View Mode Toggles */
+  .view-mode-btn {
+    @apply text-[10px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-300 text-neutral-500 hover:text-neutral-300 bg-neutral-900/50 border border-neutral-800 hover:border-neutral-700;
+  }
+
+  .view-mode-btn.active {
+    @apply text-yellow-400 bg-yellow-900/20 border-yellow-700/50 shadow-lg shadow-yellow-500/20;
+  }
+
+  .ip-badge {
+    @apply text-[10px] sm:text-xs font-mono font-semibold text-yellow-400 bg-yellow-900/20 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-yellow-700/50;
+  }
+
+  /* Flags */
+  .flag-badge {
+    @apply px-3 py-2 rounded-lg text-xs font-mono font-semibold border transition-all duration-300 bg-neutral-900/50 border-neutral-800 text-neutral-600;
+  }
+
+  .flag-badge.active {
+    @apply bg-gradient-to-br from-yellow-900/40 to-yellow-800/20 border-yellow-600 text-yellow-300 shadow-md shadow-yellow-500/20;
+  }
+
+  /* Modal & Examples */
+  .modal-title {
+    @apply text-2xl font-bold text-yellow-400 mb-4 flex items-center gap-2;
+  }
+
+  .modal-grid {
+    @apply grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-auto custom-scrollbar;
+  }
+
+  .example-title {
+    @apply font-bold text-lg text-neutral-200 group-hover:text-yellow-400 mb-1;
+  }
+
+  .example-desc {
+    @apply text-sm text-neutral-400;
+  }
+
+  .modal-close-btn {
+    @apply mt-4 w-full btn-primary text-black font-bold py-2 rounded-lg;
+  }
+
+  /* Watch Window Details */
+  .watch-header {
+    @apply text-xs font-bold text-yellow-400 mb-2 flex items-center gap-2 uppercase tracking-wider;
+  }
+
+  .watch-input-container {
+    @apply flex gap-2 mb-3;
+  }
+
+  .watch-empty-state {
+    @apply text-neutral-600 italic text-xs text-center py-4;
+  }
+
+  .watch-list {
+    @apply space-y-2 overflow-auto custom-scrollbar flex-1;
+  }
+
+  .watch-var-name {
+    @apply text-xs font-mono text-yellow-300;
+  }
+
+  .watch-var-addr {
+    @apply text-[10px] text-neutral-500;
+  }
+
+  .watch-var-val {
+    @apply text-sm font-mono text-green-400;
+  }
+
+  .watch-remove-btn {
+    @apply text-red-400 hover:text-red-300 transition-colors;
+  }
+
+  /* Input Overlay */
+  .input-overlay {
+    @apply absolute inset-0 z-50 bg-black/90 flex items-center justify-center backdrop-blur-md p-4;
+    animation: fade-in-up 0.3s ease-out;
+  }
+
+  .input-modal {
+    @apply glass-effect p-6 sm:p-10 rounded-2xl border-2 border-yellow-500/40 shadow-[0_0_80px_rgba(250,204,21,0.25)] text-center max-w-lg w-full mx-4;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .input-icon-container {
+    @apply w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-yellow-900/40 to-yellow-800/20 rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-6 border-2 border-yellow-500/30 shadow-lg shadow-yellow-500/20;
+  }
+
+  .input-title {
+    @apply text-yellow-400 font-bold text-xl sm:text-2xl mb-2 sm:mb-3 tracking-tight glow-text;
+  }
+
+  .input-desc {
+    @apply text-neutral-300 text-xs sm:text-sm mb-6 sm:mb-8 leading-relaxed;
+  }
+
+  .input-code-badge {
+    @apply bg-neutral-800/80 px-2 py-1 rounded text-yellow-300 font-mono text-[10px] sm:text-xs border border-yellow-700/30;
+  }
+
+  .input-field {
+    @apply bg-black border-3 border-yellow-700 text-yellow-300 text-center text-3xl sm:text-4xl font-mono w-16 h-16 sm:w-20 sm:h-20 rounded-xl focus:outline-none focus:border-yellow-500 focus:shadow-[0_0_30px_rgba(250,204,21,0.5)] transition-all duration-300 uppercase shadow-inner glow-border mx-auto block;
+  }
+
+  .input-hint {
+    @apply mt-3 sm:mt-5 text-[10px] sm:text-xs text-neutral-500 uppercase tracking-widest font-semibold;
+  }
+
+  /* Error Toast */
+  .error-toast-container {
+    @apply absolute top-20 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-full mx-4;
+  }
+
+  .error-toast {
+    @apply glass-effect bg-red-900/80 border-2 border-red-500 rounded-lg p-4 shadow-2xl shadow-red-500/50 flex items-start gap-3;
+  }
+
+  .error-icon {
+    @apply text-red-300 flex-shrink-0 mt-1;
+  }
+
+  .error-content {
+    @apply flex-1;
+  }
+
+  .error-title {
+    @apply font-bold text-red-100 mb-1;
+  }
+
+  .error-message {
+    @apply text-sm text-red-200 font-mono whitespace-pre-wrap;
+  }
+
+  .error-close-btn {
+    @apply text-red-300 hover:text-red-100 transition-colors;
+  }
 }
