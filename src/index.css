@@ -199,6 +199,32 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
   animation: text-blink 1s infinite;
 }
 
+/* 光标闪烁动画 - DOS风格 */
+@keyframes cursor-blink {
+  0%, 49% { 
+    background-color: currentColor;
+  }
+  50%, 100% { 
+    background-color: transparent;
+  }
+}
+
+.cursor-blink {
+  animation: cursor-blink 0.8s infinite;
+  position: relative;
+}
+
+.cursor-blink::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: inherit;
+  animation: cursor-blink 0.8s infinite;
+}
+
 /* 代码行执行高亮 */
 .code-line-executing {
   @apply bg-blue-100/50 dark:bg-yellow-500/15 border-l-2 border-blue-500 dark:border-yellow-500 !important;

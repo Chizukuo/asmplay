@@ -33,6 +33,8 @@ export const useAssembler = () => {
   const [breakpoints, setBreakpoints] = useState(new Set());
   const [watchVariables, setWatchVariables] = useState([]);
   const [callStack, setCallStack] = useState([]);
+  const [keyBuffer, setKeyBuffer] = useState([]); // 按键缓冲区
+  const [lastKeyPressed, setLastKeyPressed] = useState(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState(null);
@@ -169,17 +171,23 @@ export const useAssembler = () => {
           newCursor = result.newCursor;
         }
       } else if (ah === 0x09) {
-        // 输出字符串（DX = 字符串地址，$ 结束）
-        let addr = regs.DX;
+        // 输出字符串（DS:DX = 字符串地址，$ 结束）
+        // DX 存储的是段内偏移量，需要结合 DS 计算物理地址
+        let offset = regs.DX & 0xFFFF;
         let output = "";
         let steps = 0;
-        while (steps < 1000 && addr < MEMORY_SIZE) {
-          const charCode = currentMemory[addr];
-          const char = String.fromCharCode(charCode);
-          if (char === '$') break;
-          output += char;
-          addr++;
-          steps++;
+        try {
+          while (steps < 1000) {
+            // 使用 DS:offset 读取字符
+            const charCode = safeReadMemory(offset, 1, currentMemory, true, regs.DS);
+            const char = String.fromCharCode(charCode);
+            if (char === '$') break;
+            output += char;
+            offset++;
+            steps++;
+          }
+        } catch (err) {
+          console.error(`INT 21H AH=09H 读取字符串错误: ${err.message}`);
         }
         const result = printToConsole(output, newCursor, newBuffer);
         newBuffer = result.newBuffer;
@@ -194,15 +202,6 @@ export const useAssembler = () => {
         newRegs = { ...regs };
         newRegs.CX = year;
         newRegs.DX = ((month & 0xFF) << 8) | (day & 0xFF);
-
-        // 如果存在 DBUFFER1 符号，则将格式化字符串写入那里（如 "YYYY-MM-DD$")
-        if (symbolTable && symbolTable.DBUFFER1 !== undefined) {
-          const base = symbolTable.DBUFFER1;
-          const s = `${year.toString().padStart(4,'0')}-${month.toString().padStart(2,'0')}-${day.toString().padStart(2,'0')}$`;
-          for (let i = 0; i < s.length && base + i < MEMORY_SIZE; i++) {
-            currentMemory[base + i] = s.charCodeAt(i);
-          }
-        }
       } else if (ah === 0x2C) {
         // 获取系统时间：CH=小时, CL=分钟, DH=秒, DL=百分之一秒
         const now = new Date();
@@ -216,15 +215,6 @@ export const useAssembler = () => {
         newRegs.CX = ((hour & 0xFF) << 8) | (minute & 0xFF);
         // DX: DH = second, DL = centiseconds
         newRegs.DX = ((second & 0xFF) << 8) | (centisec & 0xFF);
-
-        // 如果存在 DBUFFER 符号，则将格式化字符串写入那里（如 "HH:MM:SS$")
-        if (symbolTable && symbolTable.DBUFFER !== undefined) {
-          const base = symbolTable.DBUFFER;
-          const s = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}:${second.toString().padStart(2,'0')}$`;
-          for (let i = 0; i < s.length && base + i < MEMORY_SIZE; i++) {
-            currentMemory[base + i] = s.charCodeAt(i);
-          }
-        }
       } else if (ah === 0x0A) {
         // 缓冲区输入（简化：等待单字符输入）
       } else if (ah === 0x4C) {
@@ -241,15 +231,34 @@ export const useAssembler = () => {
     return { newCursor, newBuffer, shouldStop, newRegs };
   }, [printToConsole, symbolTable]);
 
-  const handleBiosInterrupt = useCallback((regs, currentMemory, currentCursor, currentBuffer) => {
+  const handleBiosInterrupt = useCallback((regs, currentMemory, currentCursor, currentBuffer, keyBufferState, setKeyBufferStateCb) => {
     const ah = (regs.AX & 0xFF00) >> 8;
     const al = regs.AX & 0xFF;
     let newCursor = currentCursor;
     let newBuffer = currentBuffer;
+    let newRegs = null;
     
     try {
-      if (ah === 0x13) {
-        // Write string to screen from DS:BP. We'll treat CX bytes as characters and write starting at DH:DL
+      if (ah === 0x00 || ah === 0x01) {
+        // 设置视频模式 (AH=00H) 或 设置文本模式光标形状 (AH=01H)
+        // 忽略AH=01H，清屏处理AH=00H
+        if (ah === 0x00) {
+          // AL = 视频模式 (00H=40x25黑白, 01H=40x25彩色, 02H=80x25黑白, 03H=80x25彩色等)
+          // 简化处理：无论何种模式，都清屏
+          const rows = [];
+          for (let r = 0; r < SCREEN_ROWS; r++) {
+            const row = [];
+            for (let c = 0; c < SCREEN_COLS; c++) {
+              row.push({ char: ' ', style: 'bg-black', fg: 'text-white', blink: '' });
+            }
+            rows.push(row);
+          }
+          newBuffer = rows;
+          newCursor = { r: 0, c: 0 };
+        }
+      } else if (ah === 0x13) {
+        // Write string to screen from ES:BP (注意：INT 10H AH=13H 使用 ES 而非 DS)
+        // CX = 字符串长度，DH:DL = 行:列，BL = 属性
         const cx = regs.CX & 0xFFFF;
         const bp = regs.BP & 0xFFFF;
         let row = (regs.DX & 0xFF00) >> 8;
@@ -267,18 +276,22 @@ export const useAssembler = () => {
         const bg = `bg-${colorMap[bgColor] || 'black'}`;
         const fg = `text-${colorMap[fgColor] || 'white'}`;
 
-        for (let i = 0; i < cx; i++) {
-          const addr = bp + i;
-          if (addr >= currentMemory.length) break;
-          const ch = String.fromCharCode(currentMemory[addr]);
-          if (row >= SCREEN_ROWS) break;
-          if (col >= SCREEN_COLS) {
-            col = 0;
-            row++;
+        try {
+          for (let i = 0; i < cx; i++) {
+            // 使用 ES:BP 读取字符（INT 10H AH=13H 约定使用 ES 段）
+            const charCode = safeReadMemory(bp + i, 1, currentMemory, true, regs.ES);
+            const ch = String.fromCharCode(charCode);
             if (row >= SCREEN_ROWS) break;
+            if (col >= SCREEN_COLS) {
+              col = 0;
+              row++;
+              if (row >= SCREEN_ROWS) break;
+            }
+            newBuffer[row][col] = { ...newBuffer[row][col], char: ch, style: bg, fg: fg, blink: blinkClass };
+            col++;
           }
-          newBuffer[row][col] = { ...newBuffer[row][col], char: ch, style: bg, fg: fg, blink: blinkClass };
-          col++;
+        } catch (err) {
+          console.error(`INT 10H AH=13H 读取字符串错误: ${err.message}`);
         }
         return { newCursor, newBuffer };
       }
@@ -383,7 +396,40 @@ export const useAssembler = () => {
       console.error(`INT 10H 错误: ${err.message}`);
     }
     
-    return { newCursor, newBuffer };
+    return { newCursor, newBuffer, newRegs };
+  }, []);
+
+  const handleKeyboardInterrupt = useCallback((regs, keyBufferState, consumeKeyCb) => {
+    const ah = (regs.AX & 0xFF00) >> 8;
+    let newRegs = { ...regs };
+    let newFlags = null;
+    let shouldConsume = false;
+    
+    if (ah === 0x00) {
+      // AH=00H: 读取按键（阻塞式）- 暂不实现阻塞，简化处理
+      if (keyBufferState.length > 0) {
+        const key = keyBufferState[0];
+        newRegs.AX = key.scanCode << 8 | key.ascii;
+        shouldConsume = true; // 标记需要消费按键
+      }
+    } else if (ah === 0x01) {
+      // AH=01H: 检测按键状态（非阻塞）
+      // ZF=1表示无按键，ZF=0表示有按键
+      // 如果有按键，AX返回按键码（但不从缓冲区移除）
+      if (keyBufferState.length > 0) {
+        const key = keyBufferState[0];
+        newRegs.AX = key.scanCode << 8 | key.ascii;
+        newFlags = { ZF: 0 }; // 有按键
+      } else {
+        newFlags = { ZF: 1 }; // 无按键
+      }
+    } else if (ah === 0x02) {
+      // AH=02H: 获取键盘状态标志
+      // 简化：返回0（无特殊按键按下）
+      newRegs.AX = (newRegs.AX & 0xFF00) | 0x00;
+    }
+    
+    return { newRegs, newFlags, shouldConsume };
   }, []);
 
 
@@ -475,6 +521,19 @@ export const useAssembler = () => {
             // Handle character constants ('A', '*', '1', etc.)
             if (typeof arg === 'string' && arg.startsWith("'") && arg.endsWith("'") && arg.length === 3) {
                 return arg.charCodeAt(1);
+            }
+            
+            // Handle segment names (DATA, CODE, STACK, etc.)
+            // 当代码中使用 MOV AX, DATA 时，返回数据段的段地址
+            if (typeof arg === 'string') {
+              const upperArg = arg.toUpperCase();
+              if (symbolTable[upperArg] !== undefined) {
+                return symbolTable[upperArg];
+              }
+              // 兜底：如果 symbolTable 中没有，检查是否是常见的段名
+              if (upperArg === 'DATA') return newRegisters.DS;
+              if (upperArg === 'CODE') return newRegisters.CS;
+              if (upperArg === 'STACK') return newRegisters.SS;
             }
             
             // Immediate
@@ -765,6 +824,20 @@ export const useAssembler = () => {
                 }
                 break;
             }
+            case 'CBW': {
+                // Convert Byte to Word: 将AL的符号扩展到AH
+                const al = newRegisters.AX & 0xFF;
+                const sign = (al & 0x80) ? 0xFF : 0x00;
+                newRegisters.AX = (sign << 8) | al;
+                break;
+            }
+            case 'CWD': {
+                // Convert Word to Doubleword: 将AX的符号扩展到DX
+                const ax = newRegisters.AX;
+                const sign = (ax & 0x8000) ? 0xFFFF : 0x0000;
+                newRegisters.DX = sign;
+                break;
+            }
             case 'AND': {
               const v1 = getVal(val1);
               const res = v1 & val2;
@@ -1007,10 +1080,28 @@ export const useAssembler = () => {
                       }
                   }
               }
-                else if (val1 === '10H') {
-                  const biosResult = handleBiosInterrupt(newRegisters, newMemory, newCursor, newBuffer);
+              else if (val1 === '10H') {
+                  const biosResult = handleBiosInterrupt(newRegisters, newMemory, newCursor, newBuffer, keyBuffer, setKeyBuffer);
                   newCursor = biosResult.newCursor;
                   newBuffer = biosResult.newBuffer;
+                  if (biosResult.newRegs) newRegisters = biosResult.newRegs;
+              }
+              else if (val1 === '16H') {
+                  // 键盘中断
+                  const kbResult = handleKeyboardInterrupt(newRegisters, keyBuffer, () => {
+                    // 立即更新keyBuffer状态
+                    setKeyBuffer(prev => prev.slice(1));
+                  });
+                  if (kbResult.newRegs) newRegisters = kbResult.newRegs;
+                  if (kbResult.newFlags) {
+                      // 只更新ZF标志
+                      Object.assign(newFlags, kbResult.newFlags);
+                  }
+                  // 如果需要消费按键，更新本地keyBuffer
+                  if (kbResult.shouldConsume && keyBuffer.length > 0) {
+                    // 从本地副本中移除
+                    // 注意：setKeyBuffer在上面已经调用
+                  }
               }
               else {
                   // 未实现的中断
@@ -1069,7 +1160,7 @@ export const useAssembler = () => {
     setCursor(newCursor);
     setCallStack(newCallStack);
 
-  }, [pc, parsedInstructions, registers, memory, flags, cursor, screenBuffer, symbolTable, labelMap, handleDosInterrupt, handleBiosInterrupt, speed, isWaitingForInput, isPlaying, callStack]);
+  }, [pc, parsedInstructions, registers, memory, flags, cursor, screenBuffer, symbolTable, labelMap, handleDosInterrupt, handleBiosInterrupt, handleKeyboardInterrupt, speed, isWaitingForInput, isPlaying, callStack, keyBuffer, breakpoints]);
 
   const reload = useCallback((newCode) => {
     setCode(newCode);
@@ -1089,37 +1180,64 @@ export const useAssembler = () => {
 
   const handleInput = useCallback((char) => {
       if (isWaitingForInput) {
-          const charCode = char.charCodeAt(0);
-          setRegisters(prev => {
-              // AL = char
-              const newAX = (prev.AX & 0xFF00) | (charCode & 0xFF);
-              return { ...prev, AX: newAX };
-          });
+          // 只接受大写英文字母
+          const upperChar = char.toUpperCase();
+          const charCode = upperChar.charCodeAt(0);
           
-          // 回显到屏幕
-          setScreenBuffer(prevBuffer => {
-              const newBuffer = prevBuffer.map(row => [...row]);
-              const { r, c } = cursor;
-              if (r < SCREEN_ROWS && c < SCREEN_COLS) {
-                  newBuffer[r][c] = { ...newBuffer[r][c], char };
-              }
-              return newBuffer;
-          });
-          setCursor(prev => {
-              let newC = prev.c + 1;
-              let newR = prev.r;
-              if (newC >= SCREEN_COLS) {
-                  newC = 0;
-                  newR++;
-                  if (newR >= SCREEN_ROWS) newR = 0;
-              }
-              return { r: newR, c: newC };
-          });
-          
-          setIsWaitingForInput(false);
-          setIsPlaying(true);
+          // 检查是否是有效字符（A-Z, 0-9, 空格等）
+          if ((charCode >= 65 && charCode <= 90) || // A-Z
+              (charCode >= 48 && charCode <= 57) || // 0-9
+              charCode === 32 || charCode === 13) { // 空格或回车
+              
+              setRegisters(prev => {
+                  // AL = char
+                  const newAX = (prev.AX & 0xFF00) | (charCode & 0xFF);
+                  return { ...prev, AX: newAX };
+              });
+              
+              // 回显到屏幕（使用当前屏幕的样式）
+              setScreenBuffer(prevBuffer => {
+                  const newBuffer = prevBuffer.map(row => [...row]);
+                  const { r, c } = cursor;
+                  if (r < SCREEN_ROWS && c < SCREEN_COLS) {
+                      newBuffer[r][c] = { 
+                          ...newBuffer[r][c], 
+                          char: upperChar 
+                      };
+                  }
+                  return newBuffer;
+              });
+              
+              // 移动光标
+              setCursor(prev => {
+                  let newC = prev.c + 1;
+                  let newR = prev.r;
+                  if (newC >= SCREEN_COLS) {
+                      newC = 0;
+                      newR++;
+                      if (newR >= SCREEN_ROWS) newR = 0;
+                  }
+                  return { r: newR, c: newC };
+              });
+              
+              setIsWaitingForInput(false);
+              setIsPlaying(true);
+          }
       }
   }, [isWaitingForInput, cursor]);
+
+  // 模拟按键事件（供外部调用）
+  const simulateKeyPress = useCallback((char) => {
+      const charCode = char.charCodeAt(0);
+      const scanCode = charCode; // 简化：扫描码=ASCII码
+      setKeyBuffer(prev => [...prev, { ascii: charCode, scanCode }]);
+      setLastKeyPressed({ ascii: charCode, scanCode, timestamp: Date.now() });
+  }, []);
+
+  // 清空按键缓冲区（按键被读取后）
+  const consumeKey = useCallback(() => {
+      setKeyBuffer(prev => prev.slice(1));
+  }, []);
 
   useEffect(() => {
     if (isPlaying) {
@@ -1175,6 +1293,10 @@ export const useAssembler = () => {
     watchVariables,
     addWatchVariable,
     removeWatchVariable,
-    callStack
+    callStack,
+    keyBuffer,
+    simulateKeyPress,
+    consumeKey,
+    lastKeyPressed
   };
 };

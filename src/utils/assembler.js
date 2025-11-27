@@ -43,17 +43,36 @@ export const parseCode = (code) => {
   // DS = 0x04E0，数据段从物理地址 0x04E00 开始（真实DOS风格）
   // 符号表存储段内偏移量（相对于DS:0000），由前端转换为物理地址
   const DS_SEGMENT = 0x04E0;
+  const CS_SEGMENT = 0x04B0;
+  const SS_SEGMENT = 0x0500;
+  const ES_SEGMENT = 0x04E0;
   const DATA_SEGMENT_BASE = DS_SEGMENT << 4; // 0x04E00
   let currentMemIndex = DATA_SEGMENT_BASE;
   let currentDataOffset = 0; // 段内偏移量计数器
   let newMemory = Array(MEMORY_SIZE).fill(0);
   let inDataSegment = false;
   let inCodeSegment = false;
+  
+  // 识别段名并存储段地址（用于 MOV AX, DATA 等指令）
+  // 这样当代码中使用 MOV AX, DATA 时，DATA 会被解析为数据段地址 0x04E0
+  let segmentNames = {};
 
   // Pass 1: Data Segment Processing
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].split(';')[0].trim().toUpperCase();
     if (!line) continue;
+
+    // 识别段定义并记录段名
+    if (line.includes('SEGMENT')) {
+      const parts = line.split(/\s+/);
+      if (parts.length >= 2 && parts[1] === 'SEGMENT') {
+        const segName = parts[0];
+        if (segName === 'DATA') segmentNames[segName] = DS_SEGMENT;
+        else if (segName === 'CODE') segmentNames[segName] = CS_SEGMENT;
+        else if (segName === 'STACK') segmentNames[segName] = SS_SEGMENT;
+        else segmentNames[segName] = DS_SEGMENT; // 默认使用数据段地址
+      }
+    }
 
     if (line.includes('DATA SEGMENT')) { inDataSegment = true; inCodeSegment = false; continue; }
     if (line.includes('DATA ENDS')) { inDataSegment = false; continue; }
@@ -133,6 +152,9 @@ export const parseCode = (code) => {
   }
 
   const dataSize = currentMemIndex - DATA_SEGMENT_BASE;
+
+  // 将段名添加到 dataMap，使得 MOV AX, DATA 等指令可以正确获取段地址
+  Object.assign(dataMap, segmentNames);
 
   // Pass 2: Code Generation & Label Collection
   inCodeSegment = false;

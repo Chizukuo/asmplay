@@ -111,12 +111,12 @@ const highlightLine = (line) => {
   );
 };
 
-const MonitorCell = ({ cell, row, col }) => {
+const MonitorCell = ({ cell, row, col, isCursorPosition, isWaitingInput }) => {
   const [showCoord, setShowCoord] = useState(false);
   
   return (
     <div 
-      className={`monitor-cell ${cell.style} ${cell.fg}`}
+      className={`monitor-cell ${cell.style} ${cell.fg} ${isCursorPosition && isWaitingInput ? 'cursor-blink' : ''}`}
       onMouseEnter={() => setShowCoord(true)}
       onMouseLeave={() => setShowCoord(false)}
     >
@@ -138,6 +138,7 @@ const ExamplesModal = ({ show, onClose, onSelect }) => {
   
   const examples = [
     { key: 'default', name: '综合演示', desc: '展示基础指令和屏幕控制', fileName: 'DEMO.ASM' },
+    { key: 'clock_demo', name: '时钟程序', desc: '日期时间显示与键盘检测', fileName: 'CLOCK.ASM' },
     { key: 'loop_test', name: 'LOOP 测试', desc: '循环指令功能测试', fileName: 'LOOP.ASM' },
     { key: 'bubble_sort', name: '冒泡排序', desc: '数组排序算法演示', fileName: 'SORT.ASM' },
     { key: 'fibonacci', name: '斐波那契', desc: '递推数列计算', fileName: 'FIB.ASM' },
@@ -176,6 +177,7 @@ export default function AssemblyVisualizer() {
     registers,
     flags,
     screenBuffer,
+    cursor,
     isPlaying, setIsPlaying,
     speed, setSpeed,
     parsedInstructions,
@@ -192,8 +194,14 @@ export default function AssemblyVisualizer() {
     symbolTable,
     error,
     setError,
-    callStack
+    callStack,
+    keyBuffer,
+    simulateKeyPress,
+    consumeKey,
+    lastKeyPressed
   } = useAssembler();
+
+
 
   const [theme, setTheme] = useState('light');
 
@@ -204,6 +212,32 @@ export default function AssemblyVisualizer() {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
+
+  // 全局键盘监听 - 当程序运行时捕获按键
+  useEffect(() => {
+    const handleGlobalKeyPress = (e) => {
+      if (isWaitingForInput) {
+        // 等待输入模式：直接处理输入（只接受大写字母、数字）
+        e.preventDefault();
+        const char = e.key.toUpperCase();
+        if ((char.length === 1 && /[A-Z0-9]/.test(char)) || e.key === 'Enter') {
+          handleInput(char === 'ENTER' ? '\r' : char);
+        }
+      } else if (isPlaying) {
+        // 程序运行时：将按键放入缓冲区（用于INT 16H检测）
+        if (e.key.length === 1) {
+          e.preventDefault();
+          simulateKeyPress(e.key.toUpperCase());
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          simulateKeyPress('\r');
+        }
+      }
+    };
+
+    window.addEventListener('keypress', handleGlobalKeyPress);
+    return () => window.removeEventListener('keypress', handleGlobalKeyPress);
+  }, [isPlaying, isWaitingForInput, simulateKeyPress, handleInput]);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -778,6 +812,8 @@ export default function AssemblyVisualizer() {
                                   cell={cell}
                                   row={r}
                                   col={c}
+                                  isCursorPosition={cursor.r === r && cursor.c === c}
+                                  isWaitingInput={isWaitingForInput}
                                 />
                               ))
                             )}
@@ -843,30 +879,13 @@ export default function AssemblyVisualizer() {
         }}
       />
       
-      {/* Input Overlay */}
+      {/* Input Indicator - 等待输入时显示提示 */}
       {isWaitingForInput && (
-          <div className="input-overlay">
-              <div className="input-modal">
-                  <div className="input-icon-container">
-                    <Terminal className="text-yellow-400" size={24} />
-                  </div>
-                  <h3 className="input-title">等待输入</h3>
-                  <p className="input-desc">
-                    程序已暂停执行，正在通过 <code className="input-code-badge">INT 21H</code> 请求字符输入。
-                  </p>
-                  <div className="relative">
-                    <input 
-                        autoFocus
-                        type="text" 
-                        maxLength={1}
-                        className="input-field"
-                        onChange={(e) => {
-                            if(e.target.value) handleInput(e.target.value);
-                        }}
-                        onBlur={(e) => e.target.focus()}
-                    />
-                    <div className="input-hint">输入任意字符</div>
-                  </div>
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-pulse">
+              <Terminal size={20} className="animate-bounce" />
+              <div className="flex flex-col">
+                <span className="text-sm font-bold">等待输入</span>
+                <span className="text-xs opacity-90">请输入大写字母 (A-Z)</span>
               </div>
           </div>
       )}
