@@ -10,9 +10,13 @@ export const useAssembler = () => {
   const [pc, setPc] = useState(0); 
   const [registers, setRegisters] = useState({ 
     AX: 0, BX: 0, CX: 0, DX: 0,
-    SP: 0xFFFE, BP: 0, SI: 0, DI: 0,
-    // 修改为 DOSBox 典型值，增加真实感
-    CS: 0x04B0, DS: 0x04AE, SS: 0x04AD, ES: 0x049E, IP: 0
+    SP: 0x0800, BP: 0, SI: 0, DI: 0,
+    // 真实DOS风格内存布局（参考DEBUG截图 DS=04AE, SS=04AD, CS=04B1）：
+    // PSP:     0x04A0:0x0000 - 0x04A0:0x00FF (256字节，程序段前缀)
+    // 代码段:  0x04B0:0x0000 开始 (CS, 在PSP后约256字节)
+    // 数据段:  0x04E0:0x0000 开始 (DS, 在代码后约3KB)
+    // 栈段:    0x0500:0x0000 开始 (SS, 给栈2KB空间，SP从0x0800开始向下)
+    CS: 0x04B0, DS: 0x04E0, SS: 0x0500, ES: 0x04E0, IP: 0
   });
   const [flags, setFlags] = useState({ 
     ZF: 0, SF: 0, CF: 0, OF: 0, PF: 0, 
@@ -21,6 +25,7 @@ export const useAssembler = () => {
   const [memory, setMemory] = useState(Array(MEMORY_SIZE).fill(0));
   const [symbolTable, setSymbolTable] = useState({});
   const [labelMap, setLabelMap] = useState({});
+  const [instructionAddresses, setInstructionAddresses] = useState([]);
   const [screenBuffer, setScreenBuffer] = useState([]);
   const [cursor, setCursor] = useState({ r: 0, c: 0 });
   const [speed, setSpeed] = useState(INSTRUCTION_DELAY);
@@ -64,62 +69,62 @@ export const useAssembler = () => {
 
   // 解析代码
   useEffect(() => {
-    const { newMemory, dataMap, labelMap: lMap, instructions, dataSize } = parseCode(code);
+    const { newMemory, dataMap, labelMap: lMap, instructions, dataSize, instructionAddresses, instructionOffsets } = parseCode(code);
     setMemory(newMemory);
     setSymbolTable(dataMap);
     setLabelMap(lMap);
     setParsedInstructions(instructions);
-
-    // 增强：模拟 DOS 行为，CX 寄存器初始化为程序代码大小
-    // 1. 计算代码段估算大小 (每条指令约 2-4 字节，取平均 3)
-    const codeSize = instructions.filter(i => i.type !== 'EMPTY').length * 3;
-    
-    // 2. 加上数据段大小 (dataSize)
-    // 3. 加上 PSP (Program Segment Prefix) 的 256 字节 (0x100) 
-    //    注意：DOSBox 的 CX 通常是加载的 COM 文件大小或 EXE 的镜像大小。
-    //    为了让数值看起来更像 "0030" 这种真实感，我们模拟一个文件头或对齐。
-    //    这里简单处理：数据 + 代码，并向上取整到 16 字节 (Paragraph Alignment)
-    let totalSize = dataSize + codeSize;
-    
-    // 模拟 DOS 的段对齐 (Paragraph Alignment, 16 bytes)
-    if (totalSize > 0) {
-        totalSize = Math.ceil(totalSize / 16) * 16;
-    }
-
-    // 如果太小，给一个基础值 (比如 DOSBox 最小可能给 0x30)
-    // 但为了准确反映代码量，我们还是用计算值，只是做了对齐
-    
-    setRegisters(prev => ({
-      ...prev,
-      CX: totalSize & 0xFFFF
-    }));
+    setInstructionAddresses(instructionAddresses || []);
   }, [code]);
+
+  // 物理地址计算工具函数
+  const calculatePhysicalAddress = (segment, offset) => {
+    // 实模式：物理地址 = (段地址 << 4) + 偏移地址
+    // 限制在20位地址空间内（1MB）
+    const segBase = (segment << 4) & 0xFFFFF;
+    const physAddr = (segBase + offset) & 0xFFFFF;
+    return physAddr;
+  };
 
   // 内存边界检查
   const isValidMemoryAddress = (addr, size = 1) => {
     return addr >= 0 && addr + size <= MEMORY_SIZE;
   };
 
-  // 安全读取内存
-  const safeReadMemory = (addr, size = 2, memory) => {
-    if (!isValidMemoryAddress(addr, size)) {
-      throw new Error(`内存访问越界: 地址 0x${addr.toString(16).toUpperCase()}`);
+  // 安全读取内存（支持段地址和线性地址）
+  const safeReadMemory = (addr, size = 2, memory, useSegment = false, segment = 0) => {
+    // 如果使用段地址模型，计算物理地址
+    let physAddr = addr;
+    if (useSegment) {
+      physAddr = calculatePhysicalAddress(segment, addr);
     }
-    if (size === 1) return memory[addr];
-    if (size === 2) return memory[addr] | (memory[addr + 1] << 8);
+    
+    // 增强的边界检查，确保不会访问到 MEMORY_SIZE 或更大的地址
+    if (!isValidMemoryAddress(physAddr, size) || physAddr >= MEMORY_SIZE) {
+      throw new Error(`内存访问越界: 地址 0x${physAddr.toString(16).toUpperCase()} (size=${size})`);
+    }
+    if (size === 1) return memory[physAddr];
+    if (size === 2) return memory[physAddr] | (memory[physAddr + 1] << 8);
     return 0;
   };
 
-  // 安全写入内存
-  const safeWriteMemory = (addr, value, size = 2, memory) => {
-    if (!isValidMemoryAddress(addr, size)) {
-      throw new Error(`内存访问越界: 地址 0x${addr.toString(16).toUpperCase()}`);
+  // 安全写入内存（支持段地址和线性地址）
+  const safeWriteMemory = (addr, value, size = 2, memory, useSegment = false, segment = 0) => {
+    // 如果使用段地址模型，计算物理地址
+    let physAddr = addr;
+    if (useSegment) {
+      physAddr = calculatePhysicalAddress(segment, addr);
+    }
+    
+    // 增强的边界检查，确保不会访问到 MEMORY_SIZE 或更大的地址
+    if (!isValidMemoryAddress(physAddr, size) || physAddr >= MEMORY_SIZE) {
+      throw new Error(`内存访问越界: 地址 0x${physAddr.toString(16).toUpperCase()} (size=${size})`);
     }
     if (size === 1) {
-      memory[addr] = value & 0xFF;
+      memory[physAddr] = value & 0xFF;
     } else if (size === 2) {
-      memory[addr] = value & 0xFF;
-      memory[addr + 1] = (value >> 8) & 0xFF;
+      memory[physAddr] = value & 0xFF;
+      memory[physAddr + 1] = (value >> 8) & 0xFF;
     }
   };
 
@@ -179,6 +184,47 @@ export const useAssembler = () => {
         const result = printToConsole(output, newCursor, newBuffer);
         newBuffer = result.newBuffer;
         newCursor = result.newCursor;
+      } else if (ah === 0x2A) {
+        // 获取系统日期：填充 CX=年, DH=月, DL=日
+        const now = new Date();
+        const year = now.getFullYear() & 0xFFFF;
+        const month = now.getMonth() + 1;
+        const day = now.getDate();
+
+        newRegs = { ...regs };
+        newRegs.CX = year;
+        newRegs.DX = ((month & 0xFF) << 8) | (day & 0xFF);
+
+        // 如果存在 DBUFFER1 符号，则将格式化字符串写入那里（如 "YYYY-MM-DD$")
+        if (symbolTable && symbolTable.DBUFFER1 !== undefined) {
+          const base = symbolTable.DBUFFER1;
+          const s = `${year.toString().padStart(4,'0')}-${month.toString().padStart(2,'0')}-${day.toString().padStart(2,'0')}$`;
+          for (let i = 0; i < s.length && base + i < MEMORY_SIZE; i++) {
+            currentMemory[base + i] = s.charCodeAt(i);
+          }
+        }
+      } else if (ah === 0x2C) {
+        // 获取系统时间：CH=小时, CL=分钟, DH=秒, DL=百分之一秒
+        const now = new Date();
+        const hour = now.getHours() & 0xFF;
+        const minute = now.getMinutes() & 0xFF;
+        const second = now.getSeconds() & 0xFF;
+        const centisec = Math.floor(now.getMilliseconds() / 10) & 0xFF;
+
+        newRegs = { ...regs };
+        // CX: CH = hour, CL = minute
+        newRegs.CX = ((hour & 0xFF) << 8) | (minute & 0xFF);
+        // DX: DH = second, DL = centiseconds
+        newRegs.DX = ((second & 0xFF) << 8) | (centisec & 0xFF);
+
+        // 如果存在 DBUFFER 符号，则将格式化字符串写入那里（如 "HH:MM:SS$")
+        if (symbolTable && symbolTable.DBUFFER !== undefined) {
+          const base = symbolTable.DBUFFER;
+          const s = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}:${second.toString().padStart(2,'0')}$`;
+          for (let i = 0; i < s.length && base + i < MEMORY_SIZE; i++) {
+            currentMemory[base + i] = s.charCodeAt(i);
+          }
+        }
       } else if (ah === 0x0A) {
         // 缓冲区输入（简化：等待单字符输入）
       } else if (ah === 0x4C) {
@@ -193,15 +239,64 @@ export const useAssembler = () => {
     }
     
     return { newCursor, newBuffer, shouldStop, newRegs };
-  }, [printToConsole]);
+  }, [printToConsole, symbolTable]);
 
-  const handleBiosInterrupt = useCallback((regs, currentCursor, currentBuffer) => {
+  const handleBiosInterrupt = useCallback((regs, currentMemory, currentCursor, currentBuffer) => {
     const ah = (regs.AX & 0xFF00) >> 8;
     const al = regs.AX & 0xFF;
     let newCursor = currentCursor;
     let newBuffer = currentBuffer;
     
     try {
+      if (ah === 0x13) {
+        // Write string to screen from DS:BP. We'll treat CX bytes as characters and write starting at DH:DL
+        const cx = regs.CX & 0xFFFF;
+        const bp = regs.BP & 0xFFFF;
+        let row = (regs.DX & 0xFF00) >> 8;
+        let col = regs.DX & 0x00FF;
+        const bl = regs.BX & 0xFF;
+
+        // Attribute mapping
+        const colorMap = [
+          'black','blue-600','green-600','cyan-600','red-600','purple-600','yellow-700','gray-300',
+          'gray-600','blue-400','green-400','cyan-400','red-400','purple-400','yellow-400','white'
+        ];
+        const bgColor = (bl & 0x70) >> 4;
+        const fgColor = bl & 0x0F;
+        const blinkClass = (bl & 0x80) !== 0 ? 'text-blink' : '';
+        const bg = `bg-${colorMap[bgColor] || 'black'}`;
+        const fg = `text-${colorMap[fgColor] || 'white'}`;
+
+        for (let i = 0; i < cx; i++) {
+          const addr = bp + i;
+          if (addr >= currentMemory.length) break;
+          const ch = String.fromCharCode(currentMemory[addr]);
+          if (row >= SCREEN_ROWS) break;
+          if (col >= SCREEN_COLS) {
+            col = 0;
+            row++;
+            if (row >= SCREEN_ROWS) break;
+          }
+          newBuffer[row][col] = { ...newBuffer[row][col], char: ch, style: bg, fg: fg, blink: blinkClass };
+          col++;
+        }
+        return { newCursor, newBuffer };
+      }
+      if (ah === 0x00) {
+        // Set video mode (simplified) - clear screen and reset cursor
+        // AL = mode. We'll just clear and keep text mode behavior.
+        const rows = [];
+        for (let r = 0; r < SCREEN_ROWS; r++) {
+          const row = [];
+          for (let c = 0; c < SCREEN_COLS; c++) {
+            row.push({ char: ' ', style: 'bg-black', fg: 'text-white', blink: '' });
+          }
+          rows.push(row);
+        }
+        newBuffer = rows;
+        newCursor = { r: 0, c: 0 };
+        return { newCursor, newBuffer };
+      }
       if (ah === 0x02) {
         // 设置光标位置
         const row = (regs.DX & 0xFF00) >> 8;
@@ -291,6 +386,7 @@ export const useAssembler = () => {
     return { newCursor, newBuffer };
   }, []);
 
+
   const executeStep = useCallback(() => {
     if (isWaitingForInput) return;
 
@@ -320,26 +416,6 @@ export const useAssembler = () => {
 
         const instruction = parsedInstructions[currentPc];
         
-        // 模拟 IP (指令指针) 更新
-        // 真实汇编中指令长度不一，这里我们模拟每条指令占用 2-3 个字节
-        // 简单的指令(如 INC, DEC)算 1-2 字节，复杂的(如 MOV 立即数)算 3 字节
-        // 为了视觉上的连贯性，我们使用一个基于行号的估算算法
-        const calculateFakeIP = (index) => {
-            // 基础偏移 0x0100 (模拟 COM 文件) 或 0x0000 (模拟 EXE)
-            // 你的截图是从 0003 开始的，我们用 0000 作为基准
-            let fakeIp = 0; 
-            for(let i=0; i<index; i++) {
-                const inst = parsedInstructions[i];
-                if(inst.type === 'EMPTY') continue;
-                // 简单启发式：有逗号的通常长一点
-                fakeIp += (inst.raw.includes(',') || inst.raw.includes('OFFSET')) ? 3 : 2;
-            }
-            return fakeIp & 0xFFFF;
-        };
-
-        // 更新当前指令的 IP
-        newRegisters.IP = calculateFakeIP(currentPc);
-
         try {
           const { op, args } = instruction;
           let nextPc = currentPc + 1;
@@ -416,7 +492,9 @@ export const useAssembler = () => {
             const ea = getEA(arg);
             if (ea !== null) {
                 try {
-                    return safeReadMemory(ea, 2, newMemory);
+                    // getEA 返回的已经是段内偏移量
+                    // 统一使用 DS:offset 访问数据段
+                    return safeReadMemory(ea, 2, newMemory, true, newRegisters.DS);
                 } catch (err) {
                     throw new Error(`${err.message} (访问 ${arg})`);
                 }
@@ -437,7 +515,9 @@ export const useAssembler = () => {
                   const ea = getEA(arg);
                   if (ea !== null) {
                       try {
-                          safeWriteMemory(ea, val, 2, newMemory);
+                          // getEA 返回的已经是段内偏移量
+                          // 统一使用 DS:offset 写入数据段
+                          safeWriteMemory(ea, val, 2, newMemory, true, newRegisters.DS);
                       } catch (err) {
                           throw new Error(`${err.message} (写入 ${arg})`);
                       }
@@ -476,6 +556,14 @@ export const useAssembler = () => {
                 newFlags.OF = (sign1 === sign2 && sign1 !== signRes) ? 1 : 0;
               }
               
+              // Auxiliary Carry Flag（低4位进位/借位）
+              // 用于BCD运算，检查bit3到bit4的进位
+              if (isSub) {
+                newFlags.AF = ((operand1 & 0xF) < (operand2 & 0xF)) ? 1 : 0;
+              } else {
+                newFlags.AF = (((operand1 & 0xF) + (operand2 & 0xF)) > 0xF) ? 1 : 0;
+              }
+              
               // Parity Flag（低8位中1的个数为偶数）
               let count = 0;
               let temp = val & 0xFF;
@@ -505,7 +593,9 @@ export const useAssembler = () => {
 
           switch (op) {
             case 'MOV':
-              if (!['DS', 'ES', 'SS'].includes(val1)) setVal(val1, val2);
+              // 允许所有寄存器赋值，包括段寄存器
+              // 注意：8086中段寄存器不能直接用立即数赋值，但可以从通用寄存器赋值
+              setVal(val1, val2);
               break;
             case 'LEA': {
                 const ea = getEA(realArgs[1]);
@@ -838,7 +928,8 @@ export const useAssembler = () => {
                 // PUSH IP (nextPc)
                 newRegisters.SP = (newRegisters.SP - 2) & 0xFFFF;
                 try {
-                    safeWriteMemory(newRegisters.SP, nextPc, 2, newMemory);
+                    // 使用 SS:SP 段地址模型写入栈
+                    safeWriteMemory(newRegisters.SP, nextPc, 2, newMemory, true, newRegisters.SS);
                 } catch (err) {
                     throw new Error(`CALL 栈溢出: ${err.message}`);
                 }
@@ -858,7 +949,8 @@ export const useAssembler = () => {
             case 'RET': {
                 // POP IP
                 try {
-                    const retAddr = safeReadMemory(newRegisters.SP, 2, newMemory);
+                    // 使用 SS:SP 段地址模型读取栈
+                    const retAddr = safeReadMemory(newRegisters.SP, 2, newMemory, true, newRegisters.SS);
                     newRegisters.SP = (newRegisters.SP + 2) & 0xFFFF;
                     nextPc = retAddr;
                     // Pop from Call Stack
@@ -874,7 +966,8 @@ export const useAssembler = () => {
                 const v = getVal(val1);
                 newRegisters.SP = (newRegisters.SP - 2) & 0xFFFF;
                 try {
-                    safeWriteMemory(newRegisters.SP, v, 2, newMemory);
+                    // 使用 SS:SP 段地址模型写入栈
+                    safeWriteMemory(newRegisters.SP, v, 2, newMemory, true, newRegisters.SS);
                 } catch (err) {
                     throw new Error(`PUSH 栈溢出: ${err.message}`);
                 }
@@ -882,7 +975,8 @@ export const useAssembler = () => {
             }
             case 'POP': {
                 try {
-                    const v = safeReadMemory(newRegisters.SP, 2, newMemory);
+                    // 使用 SS:SP 段地址模型读取栈
+                    const v = safeReadMemory(newRegisters.SP, 2, newMemory, true, newRegisters.SS);
                     setVal(val1, v);
                     newRegisters.SP = (newRegisters.SP + 2) & 0xFFFF;
                 } catch (err) {
@@ -913,8 +1007,8 @@ export const useAssembler = () => {
                       }
                   }
               }
-              else if (val1 === '10H') {
-                  const biosResult = handleBiosInterrupt(newRegisters, newCursor, newBuffer);
+                else if (val1 === '10H') {
+                  const biosResult = handleBiosInterrupt(newRegisters, newMemory, newCursor, newBuffer);
                   newCursor = biosResult.newCursor;
                   newBuffer = biosResult.newBuffer;
               }
@@ -932,6 +1026,15 @@ export const useAssembler = () => {
             tempNext++;
           }
           currentPc = tempNext;
+          
+          // 更新 IP 为下一条要执行的指令的偏移
+          if (instructionAddresses && instructionAddresses.length > currentPc) {
+            const codeSegBase = newRegisters.CS << 4;
+            const physAddr = instructionAddresses[currentPc];
+            newRegisters.IP = (physAddr - codeSegBase) & 0xFFFF;
+          } else {
+            newRegisters.IP = 0;
+          }
 
           // 检查断点
           if (tempNext < parsedInstructions.length && breakpoints.has(parsedInstructions[tempNext].originalIndex)) {
@@ -974,8 +1077,8 @@ export const useAssembler = () => {
     setPc(0);
     setRegisters({ 
       AX: 0, BX: 0, CX: 0, DX: 0, 
-      SP: 0xFFFE, BP: 0, SI: 0, DI: 0,
-      CS: 0x04B0, DS: 0x04AE, SS: 0x04AD, ES: 0x049E, IP: 0
+      SP: 0x0800, BP: 0, SI: 0, DI: 0,
+      CS: 0x04B0, DS: 0x04E0, SS: 0x0500, ES: 0x04E0, IP: 0
     });
     setFlags({ ZF: 0, SF: 0, CF: 0, OF: 0, PF: 0, AF: 0, TF: 0, IF: 1, DF: 0 });
     resetScreen();
@@ -1062,6 +1165,7 @@ export const useAssembler = () => {
     speed, setSpeed,
     error, setError,
     parsedInstructions,
+    instructionAddresses,
     executeStep,
     reload,
     handleInput,

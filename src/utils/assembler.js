@@ -40,7 +40,12 @@ export const parseCode = (code) => {
   let instructions = [];
   let dataMap = {}; 
   let labelMap = {};
-  let currentMemIndex = 0;
+  // DS = 0x04E0，数据段从物理地址 0x04E00 开始（真实DOS风格）
+  // 符号表存储段内偏移量（相对于DS:0000），由前端转换为物理地址
+  const DS_SEGMENT = 0x04E0;
+  const DATA_SEGMENT_BASE = DS_SEGMENT << 4; // 0x04E00
+  let currentMemIndex = DATA_SEGMENT_BASE;
+  let currentDataOffset = 0; // 段内偏移量计数器
   let newMemory = Array(MEMORY_SIZE).fill(0);
   let inDataSegment = false;
   let inCodeSegment = false;
@@ -61,7 +66,8 @@ export const parseCode = (code) => {
       
       if (['DB', 'DW', 'DD'].includes(type)) {
           const varName = parts[0];
-          dataMap[varName] = currentMemIndex;
+          // 存储相对于DS:0000的偏移量，而非物理地址
+          dataMap[varName] = currentDataOffset;
           
           // Extract the value part: everything after the type
           let valueStr = line.substring(line.indexOf(type) + type.length).trim();
@@ -108,14 +114,17 @@ export const parseCode = (code) => {
               if (currentMemIndex < MEMORY_SIZE) {
                   if (type === 'DB') {
                       newMemory[currentMemIndex++] = val & 0xFF;
+                      currentDataOffset++;
                   } else if (type === 'DW') {
                       newMemory[currentMemIndex++] = val & 0xFF;
                       newMemory[currentMemIndex++] = (val >> 8) & 0xFF;
+                      currentDataOffset += 2;
                   } else if (type === 'DD') {
                       newMemory[currentMemIndex++] = val & 0xFF;
                       newMemory[currentMemIndex++] = (val >> 8) & 0xFF;
                       newMemory[currentMemIndex++] = (val >> 16) & 0xFF;
                       newMemory[currentMemIndex++] = (val >> 24) & 0xFF;
+                      currentDataOffset += 4;
                   }
               }
           });
@@ -123,9 +132,22 @@ export const parseCode = (code) => {
     }
   }
 
+  const dataSize = currentMemIndex - DATA_SEGMENT_BASE;
+
   // Pass 2: Code Generation & Label Collection
   inCodeSegment = false;
   inDataSegment = false;
+  
+  // CS = 0x04B0，代码段从物理地址 0x04B00 开始（真实DOS风格地址）
+  // 真实DOS风格内存布局（参考DEBUG DS=04AE, SS=04AD, CS=04B1）：
+  // PSP:     0x04A00-0x04AFF (256B, 程序段前缀)
+  // 代码段:  0x04B00-0x04DFF (CS=0x04B0, ~3KB)
+  // 数据段:  0x04E00-0x04FFF (DS=0x04E0, ~512B)
+  // 栈段:    0x05000-0x05FFF (SS=0x0500, 4KB, SP从0x0800开始向下)
+  const CODE_SEGMENT_BASE = 0x04B00;
+  let codeMemIndex = CODE_SEGMENT_BASE;
+  const instructionAddresses = []; // 存储每条指令的物理地址
+  const instructionOffsets = []; // 存储每条指令相对于CS的偏移
   
   for (let i = 0; i < lines.length; i++) {
     let rawLine = lines[i];
@@ -138,6 +160,23 @@ export const parseCode = (code) => {
     }
 
     if (line.includes('DB') && !line.includes('MOV')) {
+        instructions.push({ type: 'EMPTY', originalIndex: i, raw: rawLine });
+        continue;
+    }
+    
+    // 处理 PROC 定义（过程标签）
+    if (line.includes('PROC')) {
+        const procIdx = line.indexOf('PROC');
+        const labelName = line.substring(0, procIdx).trim();
+        if (labelName) {
+            labelMap[labelName] = instructions.length;
+        }
+        instructions.push({ type: 'EMPTY', originalIndex: i, raw: rawLine });
+        continue;
+    }
+    
+    // 处理 ENDP（过程结束）
+    if (line.includes('ENDP')) {
         instructions.push({ type: 'EMPTY', originalIndex: i, raw: rawLine });
         continue;
     }
@@ -190,5 +229,89 @@ export const parseCode = (code) => {
     instructions.push({ type: 'CMD', op, args, originalIndex: i, raw: rawLine });
   }
 
-  return { newMemory, dataMap, labelMap, instructions, dataSize: currentMemIndex };
+  // Pass 3: 生成伪机器码并写入 CS 段
+  for (let i = 0; i < instructions.length; i++) {
+    const inst = instructions[i];
+    if (inst.type === 'CMD' && codeMemIndex < MEMORY_SIZE) {
+      // 记录指令物理地址和CS段内偏移
+      instructionAddresses[i] = codeMemIndex;
+      instructionOffsets[i] = codeMemIndex - CODE_SEGMENT_BASE;
+      
+      // 生成伪机器码（简化版）
+      const pseudoCode = generatePseudoMachineCode(inst.op, inst.args);
+      
+      // 写入内存
+      for (let j = 0; j < pseudoCode.length && codeMemIndex < MEMORY_SIZE; j++) {
+        newMemory[codeMemIndex++] = pseudoCode[j];
+      }
+    } else {
+      instructionAddresses[i] = codeMemIndex;
+      instructionOffsets[i] = codeMemIndex - CODE_SEGMENT_BASE;
+    }
+  }
+
+  return { newMemory, dataMap, labelMap, instructions, dataSize, instructionAddresses, instructionOffsets };
 };
+
+// 生成伪机器码（用于内存视图显示）
+function generatePseudoMachineCode(op, args) {
+  const bytes = [];
+  
+  // 操作码映射（简化版，用于视觉识别）
+  const opcodeMap = {
+    'MOV': 0x8B, 'ADD': 0x03, 'SUB': 0x2B, 'MUL': 0xF7, 'DIV': 0xF7,
+    'INC': 0xFF, 'DEC': 0xFF, 'AND': 0x23, 'OR': 0x0B, 'XOR': 0x33,
+    'CMP': 0x3B, 'TEST': 0x85, 'NOT': 0xF7, 'NEG': 0xF7,
+    'JMP': 0xEB, 'JZ': 0x74, 'JNZ': 0x75, 'JE': 0x74, 'JNE': 0x75,
+    'JG': 0x7F, 'JL': 0x7C, 'JGE': 0x7D, 'JLE': 0x7E,
+    'JA': 0x77, 'JB': 0x72, 'JAE': 0x73, 'JBE': 0x76,
+    'JC': 0x72, 'JNC': 0x73, 'JS': 0x78, 'JNS': 0x79,
+    'JO': 0x70, 'JNO': 0x71, 'JP': 0x7A, 'JNP': 0x7B,
+    'CALL': 0xE8, 'RET': 0xC3, 'PUSH': 0x50, 'POP': 0x58,
+    'INT': 0xCD, 'NOP': 0x90, 'LOOP': 0xE2,
+    'SHL': 0xD3, 'SHR': 0xD3, 'ROL': 0xD3, 'ROR': 0xD3,
+    'RCL': 0xD3, 'RCR': 0xD3, 'LEA': 0x8D, 'XCHG': 0x87,
+    'CLC': 0xF8, 'STC': 0xF9, 'CMC': 0xF5, 'CLD': 0xFC, 'STD': 0xFD,
+    'ADC': 0x13, 'SBB': 0x1B
+  };
+  
+  // 操作码
+  const opcode = opcodeMap[op] || 0x90; // 默认 NOP
+  bytes.push(opcode);
+  
+  // ModR/M 字节（如果有操作数）
+  if (args && args.length > 0) {
+    // 简化：为有操作数的指令添加 ModR/M 字节
+    bytes.push(0xC0); // 假设寄存器到寄存器模式
+    
+    // 对于有立即数或地址的指令，添加额外字节
+    const arg0 = args[0] || '';
+    const arg1 = args[1] || '';
+    
+    // 检查是否有立即数
+    const hasImmediate = arg1.match(/[0-9A-F]+H?$/i) || 
+                         arg1.includes('OFFSET') ||
+                         (args.length === 1 && (op === 'PUSH' || op === 'POP'));
+    
+    if (hasImmediate || op === 'MOV' || op === 'ADD' || op === 'SUB') {
+      // 添加立即数或地址（2字节，小端序）
+      bytes.push(0x00);
+      bytes.push(0x00);
+    }
+    
+    // INT 指令需要中断向量
+    if (op === 'INT') {
+      bytes[1] = parseInt(arg0.replace('H', ''), 16) || 0x21;
+    }
+    
+    // CALL/JMP 等需要地址
+    if (['CALL', 'JMP', 'JZ', 'JNZ', 'JE', 'JNE', 'LOOP'].includes(op)) {
+      bytes.push(0x00); // 偏移量低字节
+      if (op === 'CALL' || op === 'JMP') {
+        bytes.push(0x00); // 偏移量高字节
+      }
+    }
+  }
+  
+  return bytes;
+}

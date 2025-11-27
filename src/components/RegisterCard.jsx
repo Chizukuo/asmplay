@@ -9,6 +9,8 @@ const RegisterCard = ({ name, val }) => {
     return () => clearTimeout(timer);
   }, [val]);
 
+  // 只有 AX, BX, CX, DX 才显示高低字节分解
+  const isGeneralPurpose = ['AX', 'BX', 'CX', 'DX'].includes(name);
   const hStr = ((val >> 8) & 0xFF).toString(16).toUpperCase().padStart(2,'0');
   const lStr = (val & 0xFF).toString(16).toUpperCase().padStart(2,'0');
   
@@ -20,11 +22,13 @@ const RegisterCard = ({ name, val }) => {
             <span className={`register-card-name ${highlight ? 'active' : 'inactive'}`}>
                 {name}
             </span>
-            <div className="flex gap-1 text-[9px] font-mono text-gray-400 dark:text-neutral-600">
-                <span>{hStr}</span>
-                <span className="text-gray-300 dark:text-neutral-700">|</span>
-                <span>{lStr}</span>
-            </div>
+            {isGeneralPurpose && (
+              <div className="flex gap-1 text-[9px] font-mono text-gray-400 dark:text-neutral-600">
+                  <span>{hStr}</span>
+                  <span className="text-gray-300 dark:text-neutral-700">|</span>
+                  <span>{lStr}</span>
+              </div>
+            )}
         </div>
 
         <div className={`register-card-value ${highlight ? 'active' : 'inactive'}`}>

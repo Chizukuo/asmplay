@@ -6,16 +6,26 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
   const [offset, setOffset] = useState(0);
   const [viewType, setViewType] = useState('byte'); // 'byte' or 'word'
   const [jumpAddr, setJumpAddr] = useState('');
+  const [autoFollow, setAutoFollow] = useState(false); // 自动跟随模式
   
   const gridRef = useRef(null);
   const [rowCount, setRowCount] = useState(16);
   const bytesPerRow = 16;
+  
+  // 统一的物理地址计算函数
+  const calculatePhysicalAddress = (seg, off) => {
+    // 实模式：物理地址 = (段地址 << 4) + 偏移地址
+    const segBase = (seg << 4) & 0xFFFFF;
+    const physAddr = (segBase + off) & 0xFFFFF;
+    return physAddr;
+  };
 
-  // 监听外部 DS 变化，如果用户未手动锁定段，可选择同步（此处简单处理为初始化同步，后续允许自由修改）
+  // 自动跟随 DS 段的变化（如果启用）
   useEffect(() => {
-      // 仅在初始化或重置时同步，避免干扰用户查看其他段
-      // 这里我们选择不强制同步，除非是第一次加载
-  }, []);
+      if (autoFollow && ds !== undefined) {
+          setSegment(ds);
+      }
+  }, [ds, autoFollow]);
 
   // 动态计算行数以填满容器且不出现滚动条
   useLayoutEffect(() => {
@@ -37,13 +47,45 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
       return () => observer.disconnect();
   }, []);
 
+  // 鼠标滚轮翻页支持
+  useEffect(() => {
+      const handleWheel = (e) => {
+          if (!gridRef.current) return;
+          
+          // 检查鼠标是否在内存视图区域内
+          const rect = gridRef.current.getBoundingClientRect();
+          const isInside = e.clientX >= rect.left && e.clientX <= rect.right &&
+                          e.clientY >= rect.top && e.clientY <= rect.bottom;
+          
+          if (isInside) {
+              e.preventDefault();
+              const delta = Math.sign(e.deltaY); // 1 或 -1
+              const scrollAmount = bytesPerRow * 3; // 每次滚动3行
+              
+              if (delta > 0) {
+                  // 向下滚动
+                  setOffset((prev) => Math.min(0xFFFF - bytesPerRow * rowCount, prev + scrollAmount));
+              } else {
+                  // 向上滚动
+                  setOffset((prev) => Math.max(0, prev - scrollAmount));
+              }
+          }
+      };
+      
+      const element = gridRef.current;
+      if (element) {
+          element.addEventListener('wheel', handleWheel, { passive: false });
+          return () => element.removeEventListener('wheel', handleWheel);
+      }
+  }, [rowCount, bytesPerRow]);
+
   const rows = useMemo(() => {
     const r = [];
 
     for (let i = 0; i < rowCount; i++) { 
         const currentOffset = (offset + i * bytesPerRow) & 0xFFFF; // 偏移量回绕
-        // 物理地址 = (Segment << 4) + Offset
-        const physBase = (segment << 4) + currentOffset;
+        // 使用统一的物理地址计算函数
+        const physBase = calculatePhysicalAddress(segment, currentOffset);
         
         if (physBase >= memory.length) break;
         
@@ -83,16 +125,35 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
   };
 
   const jumpToRegister = (regName) => {
+      // IP: 跳转到 CS:IP（代码段的指令指针）
       if (regName === 'IP') {
           setSegment(registers.CS);
           setOffset(registers.IP & 0xFFF0);
-      } else if (regName === 'SP') {
+      } 
+      // SP: 跳转到 SS:SP（栈段的栈指针）
+      else if (regName === 'SP') {
           setSegment(registers.SS);
           setOffset(registers.SP & 0xFFF0);
-      } else if (['DS', 'ES', 'SS', 'CS'].includes(regName)) {
-          setSegment(registers[regName]);
+      } 
+      // 段寄存器 (DS/ES/SS/CS): 跳转到该段的起始位置
+      else if (regName === 'DS') {
+          setSegment(registers.DS);
           setOffset(0);
-      } else {
+      }
+      else if (regName === 'ES') {
+          setSegment(registers.ES);
+          setOffset(0);
+      }
+      else if (regName === 'SS') {
+          setSegment(registers.SS);
+          setOffset(0);
+      }
+      else if (regName === 'CS') {
+          setSegment(registers.CS);
+          setOffset(0);
+      }
+      // 其他通用寄存器: 使用当前segment，只改变offset
+      else {
           const val = registers[regName];
           if (val !== undefined) {
               setOffset(val & 0xFFF0);
@@ -105,12 +166,15 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
           {/* Toolbar */}
           <div className="memory-toolbar">
               <div className="flex items-center gap-2">
+                  <div className="text-[10px] font-semibold text-gray-600 dark:text-neutral-400 whitespace-nowrap">
+                    当前: {segment.toString(16).toUpperCase().padStart(4, '0')}:{offset.toString(16).toUpperCase().padStart(4, '0')}
+                  </div>
                   <div className="memory-addr-group">
                     <input 
                         value={jumpAddr}
                         onChange={(e) => setJumpAddr(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleJump()}
-                        placeholder={`${segment.toString(16).toUpperCase().padStart(4, '0')}:${offset.toString(16).toUpperCase().padStart(4, '0')}`}
+                        placeholder="跳转到..."
                         className="memory-input"
                     />
                     <button onClick={handleJump} className="text-gray-400 dark:text-neutral-600 hover:text-blue-600 dark:hover:text-yellow-500 ml-1">
@@ -119,22 +183,54 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                   </div>
                   
                   <div className="flex gap-0.5">
-                    <button onClick={() => setOffset(Math.max(0, offset - bytesPerRow * rowCount))} className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-800 rounded text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300" title="Page Up">
+                    <button 
+                      onClick={() => setOffset(Math.max(0, offset - bytesPerRow * rowCount))} 
+                      className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-800 rounded text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300 transition-colors" 
+                      title="向上翻页 (Page Up)"
+                    >
                         <ArrowRight size={10} className="rotate-180"/>
                     </button>
-                    <button onClick={() => setOffset((offset + bytesPerRow * rowCount) & 0xFFFF)} className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-800 rounded text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300" title="Page Down">
+                    <button 
+                      onClick={() => setOffset((offset + bytesPerRow * rowCount) & 0xFFFF)} 
+                      className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-800 rounded text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300 transition-colors" 
+                      title="向下翻页 (Page Down)"
+                    >
                         <ArrowRight size={10}/>
                     </button>
                   </div>
+                  
+                  <button 
+                    onClick={() => setAutoFollow(!autoFollow)}
+                    className={`p-1 hover:bg-gray-200 dark:hover:bg-neutral-800 rounded text-xs transition-colors ${autoFollow ? 'text-blue-600 dark:text-yellow-500 bg-blue-50 dark:bg-yellow-500/10' : 'text-gray-500 dark:text-neutral-500'}`}
+                    title={autoFollow ? "关闭自动跟随DS" : "开启自动跟随DS"}
+                  >
+                    {autoFollow ? '🔒' : '🔓'}
+                  </button>
               </div>
 
               <div className="flex gap-1 overflow-x-auto no-scrollbar">
-                  {['DS', 'CS', 'SS', 'SP', 'IP'].map(reg => (
+                  <div className="text-[9px] text-gray-500 dark:text-neutral-600 px-1 py-0.5 whitespace-nowrap">快捷跳转:</div>
+                  {['DS', 'CS', 'SS', 'ES'].map(reg => (
+                      <button 
+                        key={reg}
+                        onClick={() => jumpToRegister(reg)}
+                        className={`px-1.5 py-0.5 text-[9px] hover:bg-gray-100 dark:hover:bg-neutral-800 rounded border transition-colors font-medium ${
+                          segment === registers[reg] 
+                            ? 'bg-blue-100 dark:bg-yellow-500/20 text-blue-600 dark:text-yellow-500 border-blue-300 dark:border-yellow-600' 
+                            : 'bg-white dark:bg-neutral-900 text-gray-500 dark:text-neutral-500 hover:text-blue-600 dark:hover:text-yellow-500 border-gray-200 dark:border-neutral-800'
+                        }`}
+                        title={`跳转到 ${reg}:0000 (段基址 0x${(registers[reg] << 4).toString(16).toUpperCase()})`}
+                      >
+                        {reg}
+                      </button>
+                  ))}
+                  <div className="w-px h-4 bg-gray-200 dark:bg-neutral-800 mx-0.5"></div>
+                  {['IP', 'SP'].map(reg => (
                       <button 
                         key={reg}
                         onClick={() => jumpToRegister(reg)}
                         className="px-1.5 py-0.5 text-[9px] bg-white dark:bg-neutral-900 hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-500 dark:text-neutral-500 hover:text-blue-600 dark:hover:text-yellow-500 rounded border border-gray-200 dark:border-neutral-800 transition-colors font-medium"
-                        title={`Jump to ${reg}`}
+                        title={reg === 'IP' ? `跳转到 CS:IP (代码指针)` : `跳转到 SS:SP (栈指针)`}
                       >
                         {reg}
                       </button>
@@ -173,10 +269,15 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                                 <div className="flex gap-1.5">
                                     {row.bytes.slice(0, 8).map((b, idx) => {
                                         const currOffset = row.addr + idx;
-                                        // Check SP (SS:SP)
-                                        const isSP = segment === registers.SS && (currOffset === registers.SP || currOffset === registers.SP + 1);
-                                        // Check IP (CS:IP)
-                                        const isIP = segment === registers.CS && currOffset === registers.IP;
+                                        const currPhysAddr = row.physBase + idx;
+                                        // 使用统一的地址计算函数
+                                        const spPhysAddr = calculatePhysicalAddress(registers.SS, registers.SP);
+                                        const ipPhysAddr = calculatePhysicalAddress(registers.CS, registers.IP);
+                                        // Check SP (SS:SP) - 检查当前物理地址是否在栈顶位置
+                                        // SP指向栈顶，栈是向下增长的，所以只高亮sp所指向的字（2字节）
+                                        const isSP = (currPhysAddr === spPhysAddr || currPhysAddr === spPhysAddr + 1);
+                                        // Check IP (CS:IP) - 检查当前物理地址是否是指令指针位置
+                                        const isIP = (currPhysAddr === ipPhysAddr);
                                         
                                         let style = "text-gray-400 dark:text-neutral-500";
                                         let bgStyle = "";
@@ -208,8 +309,13 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                                 <div className="flex gap-1.5">
                                     {row.bytes.slice(8, 16).map((b, idx) => {
                                         const currOffset = row.addr + 8 + idx;
-                                        const isSP = segment === registers.SS && (currOffset === registers.SP || currOffset === registers.SP + 1);
-                                        const isIP = segment === registers.CS && currOffset === registers.IP;
+                                        const currPhysAddr = row.physBase + 8 + idx;
+                                        // 使用统一的地址计算函数
+                                        const spPhysAddr = calculatePhysicalAddress(registers.SS, registers.SP);
+                                        const ipPhysAddr = calculatePhysicalAddress(registers.CS, registers.IP);
+                                        // SP指向栈顶，只高亮sp所指向的字（2字节）
+                                        const isSP = (currPhysAddr === spPhysAddr || currPhysAddr === spPhysAddr + 1);
+                                        const isIP = (currPhysAddr === ipPhysAddr);
                                         
                                         let style = "text-gray-400 dark:text-neutral-500";
                                         let bgStyle = "";
@@ -242,8 +348,11 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                                       const b1 = row.bytes[idx];
                                       const b2 = row.bytes[idx+1];
                                       const currOffset = row.addr + idx;
-                                      
-                                      const isSP = segment === registers.SS && (currOffset === registers.SP || currOffset === registers.SP + 1);
+                                      const currPhysAddr = row.physBase + idx;
+                                      // 使用统一的地址计算函数
+                                      const spPhysAddr = calculatePhysicalAddress(registers.SS, registers.SP);
+                                      // SP指向栈顶，只高亮sp所指向的字（2字节）
+                                      const isSP = (currPhysAddr === spPhysAddr);
                                       
                                       let style = "text-gray-400 dark:text-neutral-500";
                                       let bgStyle = "";
