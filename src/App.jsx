@@ -1,7 +1,11 @@
 import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
-import { Play, Pause, StepForward, RotateCcw, Cpu, Terminal, FileCode, Activity, Save, Plus, FolderOpen, Zap, Flag, Download, Upload, Circle, Eye, AlertCircle, List, Layout, Monitor } from 'lucide-react';
+import { Play, Pause, StepForward, RotateCcw, Cpu, Terminal, FileCode, Activity, Save, Plus, FolderOpen, Zap, Flag, Download, Upload, Circle, Eye, AlertCircle, List, Layout, Monitor, Layers } from 'lucide-react';
 import { PRESET_PROGRAMS, SCREEN_ROWS, SCREEN_COLS, SPEED_OPTIONS } from './constants';
 import { useAssembler } from './hooks/useAssembler';
+import RegisterCard from './components/RegisterCard';
+import MemoryView from './components/MemoryView';
+import WatchWindow from './components/WatchWindow';
+import CallStack from './components/CallStack';
 
 // 自适应缩放容器
 const AutoResizingContainer = ({ children }) => {
@@ -128,87 +132,6 @@ const MonitorCell = ({ cell, row, col }) => {
   );
 };
 
-const RegisterCard = ({ name, val }) => (
-  <div className="register-card">
-    <div className="register-name">{name}</div>
-    <div className="register-val">
-      {val !== undefined ? val.toString(16).padStart(4, '0').toUpperCase() : '0000'}
-    </div>
-  </div>
-);
-
-const MemoryView = React.memo(({ memory, sp }) => {
-  const [startAddr, setStartAddr] = useState(0);
-  
-  const rows = [];
-  for (let i = 0; i < 16; i++) { // Show 16 rows (256 bytes)
-      const rowAddr = startAddr + i * 16;
-      if (rowAddr >= memory.length) break;
-      const bytes = [];
-      const chars = [];
-      for (let j = 0; j < 16; j++) {
-          const addr = rowAddr + j;
-          if (addr < memory.length) {
-              bytes.push(memory[addr]);
-              const c = memory[addr];
-              chars.push(c >= 32 && c <= 126 ? String.fromCharCode(c) : '.');
-          } else {
-              bytes.push(null);
-              chars.push(' ');
-          }
-      }
-      rows.push({ addr: rowAddr, bytes, chars });
-  }
-
-  return (
-      <div className="memory-view-container">
-          <div className="flex justify-between items-center mb-1.5 px-1">
-              <div className="flex gap-1.5 items-center">
-                  <button onClick={() => setStartAddr(Math.max(0, startAddr - 256))} className="memory-nav-btn">&lt;</button>
-                  <div className="relative">
-                    <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-neutral-600 text-[9px]">0x</span>
-                    <input 
-                        value={startAddr.toString(16).toUpperCase()}
-                        onChange={(e) => {
-                            const val = parseInt(e.target.value, 16);
-                            if (!isNaN(val)) setStartAddr(val);
-                        }}
-                        className="memory-addr-input"
-                    />
-                  </div>
-                  <button onClick={() => setStartAddr(Math.min(memory.length - 256, startAddr + 256))} className="memory-nav-btn">&gt;</button>
-              </div>
-              <div className="text-[9px] font-bold text-neutral-600 uppercase tracking-wider">Memory Dump</div>
-          </div>
-          <div className="memory-grid">
-              {rows.map(row => (
-                  <div key={row.addr} className="memory-row group">
-                      <div className="w-10 text-neutral-600 select-none group-hover:text-neutral-400 transition-colors">{row.addr.toString(16).padStart(4, '0').toUpperCase()}</div>
-                      <div className="flex-1 flex gap-0.5 ml-1.5">
-                          {row.bytes.map((b, idx) => {
-                              const addr = row.addr + idx;
-                              const isSP = addr === sp || addr === sp + 1;
-                              let style = "text-neutral-500";
-                              if (isSP) style = "text-yellow-400 font-bold bg-yellow-900/20";
-                              else if (b !== 0) style = "text-neutral-300";
-                              
-                              return (
-                                  <div key={idx} className={`w-4 text-center ${style}`}>
-                                      {b !== null ? b.toString(16).padStart(2, '0').toUpperCase() : '  '}
-                                  </div>
-                              );
-                          })}
-                      </div>
-                      <div className="w-24 text-neutral-700 tracking-widest border-l border-neutral-800 pl-1.5 ml-1.5 font-sans text-[9px] leading-3 pt-0.5">
-                          {row.chars.join('')}
-                      </div>
-                  </div>
-              ))}
-          </div>
-      </div>
-  );
-});
-
 // 示例程序选择器
 const ExamplesModal = ({ show, onClose, onSelect }) => {
   if (!show) return null;
@@ -246,92 +169,6 @@ const ExamplesModal = ({ show, onClose, onSelect }) => {
   );
 };
 
-// 变量监视窗口
-const WatchWindow = ({ watchVariables, symbolTable, memory, onRemove, onAdd }) => {
-  const [newVar, setNewVar] = useState('');
-  
-  const handleAdd = () => {
-    if (newVar.trim() && symbolTable.hasOwnProperty(newVar.trim().toUpperCase())) {
-      onAdd(newVar.trim().toUpperCase());
-      setNewVar('');
-    }
-  };
-  
-  return (
-    <div className="flex flex-col h-full">
-      <div className="watch-header">
-        <Eye size={14}/> 变量监视
-      </div>
-      
-      {/* 添加变量输入框 */}
-      <div className="watch-input-container">
-        <input 
-          type="text"
-          value={newVar}
-          onChange={(e) => setNewVar(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
-          placeholder="输入变量名..."
-          className="watch-input"
-        />
-        <button 
-          onClick={handleAdd}
-          className="watch-add-btn"
-        >
-          添加
-        </button>
-      </div>
-      
-      {watchVariables.length === 0 ? (
-        <div className="watch-empty-state">
-          暂无监视变量<br/>
-          <span className="text-[10px]">从数据段定义的变量中添加</span>
-        </div>
-      ) : (
-        <div className="watch-list">
-          {watchVariables.map(varName => {
-            const addr = symbolTable[varName];
-            const value = addr !== undefined ? (memory[addr] | (memory[addr + 1] << 8)) : 'N/A';
-            return (
-              <div key={varName} className="watch-item">
-                <div>
-                  <div className="watch-var-name">{varName}</div>
-                  <div className="watch-var-addr">
-                    地址: {addr !== undefined ? `0x${addr.toString(16).toUpperCase()}` : 'N/A'}
-                  </div>
-                  <div className="watch-var-val">
-                    {typeof value === 'number' ? `${value} (0x${value.toString(16).toUpperCase()})` : value}
-                  </div>
-                </div>
-                <button onClick={() => onRemove(varName)} className="watch-remove-btn">
-                  <AlertCircle size={16}/>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      
-      {/* 可用变量列表 */}
-      {Object.keys(symbolTable).length > 0 && (
-        <div className="mt-3 pt-3 border-t border-neutral-800">
-          <div className="text-[10px] text-neutral-500 mb-2">可用变量:</div>
-          <div className="flex flex-wrap gap-1">
-            {Object.keys(symbolTable).filter(v => !watchVariables.includes(v)).map(varName => (
-              <button
-                key={varName}
-                onClick={() => onAdd(varName)}
-                className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded text-[10px] transition-colors"
-              >
-                {varName}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 export default function AssemblyVisualizer() {
   const {
     code, setCode,
@@ -341,7 +178,6 @@ export default function AssemblyVisualizer() {
     screenBuffer,
     isPlaying, setIsPlaying,
     speed, setSpeed,
-    logs,
     parsedInstructions,
     executeStep,
     reload,
@@ -355,14 +191,18 @@ export default function AssemblyVisualizer() {
     removeWatchVariable,
     symbolTable,
     error,
-    setError
+    setError,
+    callStack
   } = useAssembler();
 
-  const [viewMode, setViewMode] = useState('cpu'); // 'cpu', 'memory', or 'watch'
+  const [viewMode, setViewMode] = useState('cpu'); // 'cpu', 'memory', 'watch', or 'stack'
   const [showExamples, setShowExamples] = useState(false);
   const [fileName, setFileName] = useState('SOURCE.ASM');
   const [isEditingFileName, setIsEditingFileName] = useState(false);
   const [mobileTab, setMobileTab] = useState('editor'); // 'editor' | 'run'
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const [cursorPosition, setCursorPosition] = useState({ top: 0, left: 0 });
 
   const fileInputRef = useRef(null);
   const editorRef = useRef(null);
@@ -370,12 +210,102 @@ export default function AssemblyVisualizer() {
   const lineNumbersRef = useRef(null);
   const highlightInnerRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
-  const logsEndRef = useRef(null);
 
-  // 自动滚动到最新日志
-  useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+  // 自动补全逻辑
+  const handleEditorKeyDown = (e) => {
+    // 快捷键
+    if (e.key === 'F5') {
+      e.preventDefault();
+      handlePlayPause();
+    } else if (e.key === 'F10') {
+      e.preventDefault();
+      if (!isPlaying) executeStep();
+    } else if (e.key === 'F9') {
+      e.preventDefault();
+      // 获取当前行号
+      const textarea = e.target;
+      const value = textarea.value;
+      const selectionStart = textarea.selectionStart;
+      const lineIndex = value.substr(0, selectionStart).split('\n').length - 1;
+      toggleBreakpoint(lineIndex);
+    }
+
+    // 补全选择
+    if (suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSuggestionIndex(prev => (prev + 1) % suggestions.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSuggestionIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        applySuggestion(suggestions[suggestionIndex]);
+      } else if (e.key === 'Escape') {
+        setSuggestions([]);
+      }
+    }
+  };
+
+  const handleEditorChange = (e) => {
+    const val = e.target.value;
+    setCode(val);
+    
+    // 简单的补全触发逻辑
+    const textarea = e.target;
+    const selectionStart = textarea.selectionStart;
+    const textBeforeCursor = val.substring(0, selectionStart);
+    const lines = textBeforeCursor.split('\n');
+    const currentLine = lines[lines.length - 1];
+    const words = currentLine.split(/[\s,]+/);
+    const lastWord = words[words.length - 1].toUpperCase();
+
+    if (lastWord.length >= 1) {
+      const keywords = [
+        'MOV', 'ADD', 'SUB', 'MUL', 'DIV', 'INC', 'DEC', 'JMP', 'JZ', 'JNZ', 'LOOP', 'CMP', 'INT', 'PUSH', 'POP', 'CALL', 'RET', 
+        'AND', 'OR', 'XOR', 'NOT', 'LEA', 'SHL', 'SHR', 'AX', 'BX', 'CX', 'DX', 'SP', 'BP', 'SI', 'DI', 'CS', 'DS', 'SS', 'ES'
+      ];
+      const matches = keywords.filter(k => k.startsWith(lastWord) && k !== lastWord);
+      if (matches.length > 0) {
+        setSuggestions(matches);
+        setSuggestionIndex(0);
+        
+        // 计算光标位置用于显示补全框 (简化计算)
+        // 这里只是一个近似值，实际需要更复杂的测量
+        const lineHeight = 24;
+        const charWidth = 8.4; // Consolas 14px approx
+        const top = (lines.length) * lineHeight - textarea.scrollTop;
+        const left = (currentLine.length) * charWidth - textarea.scrollLeft + 48; // + line numbers width
+        setCursorPosition({ top, left });
+      } else {
+        setSuggestions([]);
+      }
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const applySuggestion = (suggestion) => {
+    const textarea = editorRef.current;
+    const val = textarea.value;
+    const selectionStart = textarea.selectionStart;
+    const textBeforeCursor = val.substring(0, selectionStart);
+    const lines = textBeforeCursor.split('\n');
+    const currentLine = lines[lines.length - 1];
+    const words = currentLine.split(/[\s,]+/);
+    const lastWord = words[words.length - 1];
+    
+    const newVal = val.substring(0, selectionStart - lastWord.length) + suggestion + val.substring(selectionStart);
+    setCode(newVal);
+    setSuggestions([]);
+    
+    // 恢复焦点并移动光标
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = selectionStart - lastWord.length + suggestion.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
 
   // 自动滚动到当前执行的代码行
   useEffect(() => {
@@ -586,11 +516,30 @@ export default function AssemblyVisualizer() {
                  <textarea
                     ref={editorRef}
                     value={code}
-                    onChange={(e) => setCode(e.target.value)}
+                    onChange={handleEditorChange}
+                    onKeyDown={handleEditorKeyDown}
                     onScroll={handleScroll}
                     className="editor-textarea"
                     spellCheck="false"
                  />
+                 
+                 {/* Suggestion Box */}
+                 {suggestions.length > 0 && (
+                    <div 
+                      className="absolute z-50 bg-neutral-800 border border-neutral-700 rounded shadow-xl overflow-hidden min-w-[120px]"
+                      style={{ top: cursorPosition.top, left: cursorPosition.left }}
+                    >
+                      {suggestions.map((s, i) => (
+                        <div 
+                          key={s}
+                          className={`px-2 py-1 text-xs font-mono cursor-pointer ${i === suggestionIndex ? 'bg-yellow-600 text-white' : 'text-neutral-300 hover:bg-neutral-700'}`}
+                          onClick={() => applySuggestion(s)}
+                        >
+                          {s}
+                        </div>
+                      ))}
+                    </div>
+                 )}
               </div>
            </div>
            
@@ -600,11 +549,12 @@ export default function AssemblyVisualizer() {
                 <button 
                   onClick={handlePlayPause}
                   className={`play-btn ${isPlaying ? 'playing' : 'idle'}`}
+                  title="F5"
                 >
-                   {isPlaying ? <><Pause size={16}/> <span className="hidden xs:inline">暂停</span></> : <><Play size={16}/> <span className="hidden xs:inline">运行</span></>}
+                   {isPlaying ? <><Pause size={16}/> <span className="hidden xs:inline">暂停 (F5)</span></> : <><Play size={16}/> <span className="hidden xs:inline">运行 (F5)</span></>}
                 </button>
                 <div className="hidden sm:block h-8 w-px bg-neutral-700/50"></div>
-                <button onClick={executeStep} disabled={isPlaying} className="toolbar-btn toolbar-btn-blue" title="单步执行">
+                <button onClick={executeStep} disabled={isPlaying} className="toolbar-btn toolbar-btn-blue" title="单步执行 (F10)">
                    <StepForward size={18} />
                 </button>
                 <button onClick={() => reload(code)} className="toolbar-btn toolbar-btn-green" title="重置">
@@ -681,56 +631,100 @@ export default function AssemblyVisualizer() {
            </div>
 
            {/* Top: Registers & State */}
-           <div className="h-1/2 lg:h-[45%] border-b border-neutral-800/50 p-3 sm:p-4 flex flex-col gap-2 overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
+           <div className="h-[40%] lg:h-[45%] border-b border-neutral-800/50 p-3 sm:p-4 flex flex-col gap-3 overflow-y-auto custom-scrollbar bg-neutral-900/30">
+              <div className="flex flex-wrap items-center justify-between mb-1 gap-2 sticky top-0 z-10 bg-neutral-900/95 p-2 -mx-2 rounded-lg border border-neutral-800/50 backdrop-blur-md shadow-sm">
                  <div className="flex gap-1.5 sm:gap-2">
                     <button 
                         onClick={() => setViewMode('cpu')}
                         className={`view-mode-btn ${viewMode === 'cpu' ? 'active' : ''}`}
                     >
-                        <Cpu size={12}/> <span>CPU</span>
+                        <Cpu size={14}/> <span className="font-bold">CPU</span>
                     </button>
                     <button 
                         onClick={() => setViewMode('memory')}
                         className={`view-mode-btn ${viewMode === 'memory' ? 'active' : ''}`}
                     >
-                        <Activity size={12}/> <span>MEM</span>
+                        <Activity size={14}/> <span className="font-bold">MEM</span>
                     </button>
                     <button 
                         onClick={() => setViewMode('watch')}
                         className={`view-mode-btn ${viewMode === 'watch' ? 'active' : ''}`}
                     >
-                        <Eye size={12}/> <span>WATCH</span>
+                        <Eye size={14}/> <span className="font-bold">WATCH</span>
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('stack')}
+                        className={`view-mode-btn ${viewMode === 'stack' ? 'active' : ''}`}
+                    >
+                        <Layers size={14}/> <span className="font-bold">STACK</span>
                     </button>
                  </div>
-                 <div className="ip-badge">IP: {pc.toString(16).padStart(4,'0').toUpperCase()}H</div>
+                 <div className="ip-badge text-sm py-1 px-3 bg-yellow-900/30 border-yellow-700/50 text-yellow-400 shadow-[0_0_10px_rgba(234,179,8,0.1)]">
+                    IP: <span className="font-mono text-lg font-bold">{pc.toString(16).padStart(4,'0').toUpperCase()}H</span>
+                 </div>
               </div>
               
               {viewMode === 'cpu' ? (
-                  <>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {['AX', 'BX', 'CX', 'DX'].map(reg => <RegisterCard key={reg} name={reg} val={registers[reg]} />)}
+                  <div className="space-y-4 pb-2">
+                    {/* General Purpose Registers */}
+                    <div>
+                        <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-2 pl-1 flex items-center gap-2">
+                            <div className="w-1 h-1 rounded-full bg-yellow-500"></div> 通用寄存器
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                            {['AX', 'BX', 'CX', 'DX'].map(reg => <RegisterCard key={reg} name={reg} val={registers[reg]} />)}
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {['SP', 'BP', 'SI', 'DI'].map(reg => <RegisterCard key={reg} name={reg} val={registers[reg]} />)}
+                    {/* Pointers & Index Registers */}
+                    <div>
+                        <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-2 pl-1 flex items-center gap-2">
+                            <div className="w-1 h-1 rounded-full bg-blue-500"></div> 指针与变址
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                            {['SP', 'BP', 'SI', 'DI'].map(reg => <RegisterCard key={reg} name={reg} val={registers[reg]} />)}
+                        </div>
+                    </div>
+
+                    {/* Segment Registers */}
+                    <div>
+                        <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-2 pl-1 flex items-center gap-2">
+                            <div className="w-1 h-1 rounded-full bg-purple-500"></div> 段寄存器
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                            {['CS', 'DS', 'SS', 'ES'].map(reg => <RegisterCard key={reg} name={reg} val={registers[reg]} />)}
+                        </div>
                     </div>
 
                     {/* Flags Display */}
-                    <div className="flex flex-wrap gap-1.5">
-                        <div className="text-xs font-bold text-yellow-400 flex items-center gap-2 mr-2 bg-yellow-900/20 px-3 py-2 rounded-lg border border-yellow-700/50">
-                          <Flag size={14}/> FLAGS
+                    <div className="bg-black/40 rounded-xl p-3 border border-neutral-800">
+                        <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                           <Flag size={12}/> 标志寄存器 (FLAGS)
                         </div>
-                        {Object.entries(flags).map(([name, val]) => (
-                            <div key={name} className={`flag-badge ${val ? 'active' : ''}`}>
-                                {name}={val ? '1' : '0'}
-                            </div>
-                        ))}
+                        <div className="flex flex-wrap gap-2">
+                            {[
+                            { name: 'OF', labels: ['NV', 'OV'], desc: 'Overflow' },
+                            { name: 'DF', labels: ['UP', 'DN'], desc: 'Direction' },
+                            { name: 'IF', labels: ['DI', 'EI'], desc: 'Interrupt' },
+                            { name: 'SF', labels: ['PL', 'NG'], desc: 'Sign' },
+                            { name: 'ZF', labels: ['NZ', 'ZR'], desc: 'Zero' },
+                            { name: 'AF', labels: ['NA', 'AC'], desc: 'Aux Carry' },
+                            { name: 'PF', labels: ['PO', 'PE'], desc: 'Parity' },
+                            { name: 'CF', labels: ['NC', 'CY'], desc: 'Carry' }
+                            ].map(({ name, labels, desc }) => (
+                                <div key={name} className="flex-1 min-w-[60px] bg-neutral-900/80 border border-neutral-700/50 rounded p-1.5 flex flex-col items-center gap-1 hover:border-yellow-500/30 transition-colors group" title={`${desc} Flag: ${flags[name]}`}>
+                                    <span className="text-[10px] text-neutral-500 font-bold group-hover:text-yellow-500/70">{name}</span>
+                                    <span className={`text-xs font-mono font-bold ${flags[name] ? 'text-yellow-400' : 'text-neutral-400'}`}>
+                                        {labels[flags[name] || 0]}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                  </>
+                  </div>
               ) : viewMode === 'memory' ? (
-                  <MemoryView memory={memory} sp={registers.SP} />
-              ) : (
+                  <MemoryView memory={memory} sp={registers.SP} registers={registers} ds={registers.DS} />
+              ) : viewMode === 'watch' ? (
                   <WatchWindow 
                     watchVariables={watchVariables} 
                     symbolTable={symbolTable} 
@@ -738,22 +732,9 @@ export default function AssemblyVisualizer() {
                     onRemove={removeWatchVariable}
                     onAdd={addWatchVariable}
                   />
+              ) : (
+                  <CallStack callStack={callStack} />
               )}
-
-              <div className="log-panel">
-                 <h3 className="log-header">
-                   <Activity size={12}/> Execution Log
-                 </h3>
-                 <div className="log-content">
-                    {logs.map((log, i) => (
-                       <div key={i} className="log-entry">
-                         {log}
-                       </div>
-                    ))}
-                    <div ref={logsEndRef} />
-                    {logs.length === 0 && <div className="text-neutral-600 italic text-center mt-4 text-xs">Ready to execute...</div>}
-                 </div>
-              </div>
            </div>
 
            {/* Bottom: Monitor */}

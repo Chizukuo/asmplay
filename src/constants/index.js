@@ -1,4 +1,4 @@
-export const MEMORY_SIZE = 65536; // 64KB
+export const MEMORY_SIZE = 1024 * 1024; // 1MB
 export const INSTRUCTION_DELAY = 100;
 export const SCREEN_ROWS = 25;
 export const SCREEN_COLS = 80;

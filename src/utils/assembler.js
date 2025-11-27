@@ -8,6 +8,8 @@ export const getReg = (name, currentRegs) => {
     'CH': () => (currentRegs.CX & 0xFF00) >> 8, 'CL': () => currentRegs.CX & 0x00FF,
     'DH': () => (currentRegs.DX & 0xFF00) >> 8, 'DL': () => currentRegs.DX & 0x00FF,
     'SP': () => currentRegs.SP, 'BP': () => currentRegs.BP, 'SI': () => currentRegs.SI, 'DI': () => currentRegs.DI,
+    'CS': () => currentRegs.CS, 'DS': () => currentRegs.DS, 'SS': () => currentRegs.SS, 'ES': () => currentRegs.ES,
+    'IP': () => currentRegs.IP, // Although IP is usually internal, we can expose it for read
   };
   if (regMap[name]) return regMap[name]();
   throw new Error(`未知寄存器: ${name}`);
@@ -18,7 +20,7 @@ export const setReg = (name, val, currentRegs) => {
   val = val & 0xFFFF; 
   const val8 = val & 0xFF;
 
-  if (['AX', 'BX', 'CX', 'DX', 'SP', 'BP', 'SI', 'DI'].includes(name)) {
+  if (['AX', 'BX', 'CX', 'DX', 'SP', 'BP', 'SI', 'DI', 'CS', 'DS', 'SS', 'ES', 'IP'].includes(name)) {
     newRegs[name] = val;
   } else if (name === 'AH') newRegs.AX = (newRegs.AX & 0x00FF) | (val8 << 8);
   else if (name === 'AL') newRegs.AX = (newRegs.AX & 0xFF00) | val8;
@@ -188,5 +190,5 @@ export const parseCode = (code) => {
     instructions.push({ type: 'CMD', op, args, originalIndex: i, raw: rawLine });
   }
 
-  return { newMemory, dataMap, labelMap, instructions };
+  return { newMemory, dataMap, labelMap, instructions, dataSize: currentMemIndex };
 };

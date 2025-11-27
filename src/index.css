@@ -475,23 +475,7 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
     @apply bg-gradient-to-r from-yellow-500 to-yellow-600 text-black shadow-lg shadow-yellow-500/30 scale-105 border-transparent;
   }
 
-  /* Log Panel */
-  .log-panel {
-    @apply flex-1 glass-effect rounded-lg border border-neutral-800/50 p-3 flex flex-col min-h-0 shadow-xl;
-  }
-
-  .log-header {
-    @apply text-[10px] font-bold text-yellow-400 mb-2 flex items-center gap-2 uppercase tracking-wider bg-yellow-900/20 px-2 py-1.5 rounded border border-yellow-700/50;
-  }
-
-  .log-content {
-    @apply flex-1 overflow-auto custom-scrollbar font-mono text-[10px] space-y-1 pr-1;
-  }
-
-  .log-entry {
-    @apply text-yellow-300/90 border-l-2 border-yellow-600/50 pl-2 py-1 hover:bg-yellow-900/10 transition-all duration-200 rounded-r bg-neutral-900/30 backdrop-blur-sm;
-    animation: fade-in-up 0.3s ease-out;
-  }
+  /* Log Panel styles removed */
 
   /* View Mode Toggles */
   .view-mode-btn {

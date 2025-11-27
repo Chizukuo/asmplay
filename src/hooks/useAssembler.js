@@ -10,9 +10,14 @@ export const useAssembler = () => {
   const [pc, setPc] = useState(0); 
   const [registers, setRegisters] = useState({ 
     AX: 0, BX: 0, CX: 0, DX: 0,
-    SP: MEMORY_SIZE - 2, BP: 0, SI: 0, DI: 0
+    SP: 0xFFFE, BP: 0, SI: 0, DI: 0,
+    // 修改为 DOSBox 典型值，增加真实感
+    CS: 0x04B0, DS: 0x04AE, SS: 0x04AD, ES: 0x049E, IP: 0
   });
-  const [flags, setFlags] = useState({ ZF: 0, SF: 0, CF: 0, OF: 0, PF: 0 });
+  const [flags, setFlags] = useState({ 
+    ZF: 0, SF: 0, CF: 0, OF: 0, PF: 0, 
+    AF: 0, TF: 0, IF: 0, DF: 0 
+  });
   const [memory, setMemory] = useState(Array(MEMORY_SIZE).fill(0));
   const [symbolTable, setSymbolTable] = useState({});
   const [labelMap, setLabelMap] = useState({});
@@ -22,10 +27,10 @@ export const useAssembler = () => {
   const [isWaitingForInput, setIsWaitingForInput] = useState(false);
   const [breakpoints, setBreakpoints] = useState(new Set());
   const [watchVariables, setWatchVariables] = useState([]);
+  const [callStack, setCallStack] = useState([]);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState(null);
-  const [logs, setLogs] = useState([]);
   const [parsedInstructions, setParsedInstructions] = useState([]);
 
   const intervalRef = useRef(null);
@@ -59,14 +64,36 @@ export const useAssembler = () => {
 
   // 解析代码
   useEffect(() => {
-    const { newMemory, dataMap, labelMap: lMap, instructions } = parseCode(code);
+    const { newMemory, dataMap, labelMap: lMap, instructions, dataSize } = parseCode(code);
     setMemory(newMemory);
     setSymbolTable(dataMap);
     setLabelMap(lMap);
     setParsedInstructions(instructions);
-  }, [code]);
 
-  const addLog = (msg) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev]);
+    // 增强：模拟 DOS 行为，CX 寄存器初始化为程序代码大小
+    // 1. 计算代码段估算大小 (每条指令约 2-4 字节，取平均 3)
+    const codeSize = instructions.filter(i => i.type !== 'EMPTY').length * 3;
+    
+    // 2. 加上数据段大小 (dataSize)
+    // 3. 加上 PSP (Program Segment Prefix) 的 256 字节 (0x100) 
+    //    注意：DOSBox 的 CX 通常是加载的 COM 文件大小或 EXE 的镜像大小。
+    //    为了让数值看起来更像 "0030" 这种真实感，我们模拟一个文件头或对齐。
+    //    这里简单处理：数据 + 代码，并向上取整到 16 字节 (Paragraph Alignment)
+    let totalSize = dataSize + codeSize;
+    
+    // 模拟 DOS 的段对齐 (Paragraph Alignment, 16 bytes)
+    if (totalSize > 0) {
+        totalSize = Math.ceil(totalSize / 16) * 16;
+    }
+
+    // 如果太小，给一个基础值 (比如 DOSBox 最小可能给 0x30)
+    // 但为了准确反映代码量，我们还是用计算值，只是做了对齐
+    
+    setRegisters(prev => ({
+      ...prev,
+      CX: totalSize & 0xFFFF
+    }));
+  }, [code]);
 
   // 内存边界检查
   const isValidMemoryAddress = (addr, size = 1) => {
@@ -109,7 +136,7 @@ export const useAssembler = () => {
     return { newBuffer, newCursor: { r, c } };
   }, []);
 
-  const handleDosInterrupt = useCallback((regs, currentMemory, currentCursor, currentBuffer, logger = addLog) => {
+  const handleDosInterrupt = useCallback((regs, currentMemory, currentCursor, currentBuffer) => {
     const ah = (regs.AX & 0xFF00) >> 8;
     const al = regs.AX & 0xFF;
     let newCursor = currentCursor;
@@ -124,20 +151,17 @@ export const useAssembler = () => {
         const result = printToConsole(char, newCursor, newBuffer);
         newBuffer = result.newBuffer;
         newCursor = result.newCursor;
-        logger(`INT 21H,02H: 输出字符 '${char}'`);
       } else if (ah === 0x06) {
         // 直接控制台 I/O
         const dl = regs.DX & 0xFF;
         if (dl === 0xFF) {
           // 输入：设置 ZF=1 表示无字符，这里简化处理
-          logger(`INT 21H,06H: 直接控制台输入（未实现）`);
         } else {
           // 输出
           const char = String.fromCharCode(dl);
           const result = printToConsole(char, newCursor, newBuffer);
           newBuffer = result.newBuffer;
           newCursor = result.newCursor;
-          logger(`INT 21H,06H: 输出字符 '${char}'`);
         }
       } else if (ah === 0x09) {
         // 输出字符串（DX = 字符串地址，$ 结束）
@@ -155,26 +179,23 @@ export const useAssembler = () => {
         const result = printToConsole(output, newCursor, newBuffer);
         newBuffer = result.newBuffer;
         newCursor = result.newCursor;
-        logger(`INT 21H,09H: 输出字符串 "${output.substring(0, 30)}${output.length > 30 ? '...' : ''}"`);
       } else if (ah === 0x0A) {
         // 缓冲区输入（简化：等待单字符输入）
-        logger(`INT 21H,0AH: 缓冲区输入`);
       } else if (ah === 0x4C) {
         // 程序终止
         setIsPlaying(false);
-        logger(`INT 21H,4CH: 程序终止（退出码=${al.toString(16).toUpperCase()}H）`);
         shouldStop = true;
       } else {
-        logger(`INT 21H,${ah.toString(16).toUpperCase()}H: 未实现的功能`);
+        // 未实现的功能
       }
     } catch (err) {
-      logger(`INT 21H 错误: ${err.message}`);
+      console.error(`INT 21H 错误: ${err.message}`);
     }
     
     return { newCursor, newBuffer, shouldStop, newRegs };
   }, [printToConsole]);
 
-  const handleBiosInterrupt = useCallback((regs, currentCursor, currentBuffer, logger = addLog) => {
+  const handleBiosInterrupt = useCallback((regs, currentCursor, currentBuffer) => {
     const ah = (regs.AX & 0xFF00) >> 8;
     const al = regs.AX & 0xFF;
     let newCursor = currentCursor;
@@ -187,9 +208,8 @@ export const useAssembler = () => {
         const col = regs.DX & 0x00FF;
         if (row < SCREEN_ROWS && col < SCREEN_COLS) {
           newCursor = { r: row, c: col };
-          logger(`INT 10H,02H: 设置光标 [${row}, ${col}]`);
         } else {
-          logger(`INT 10H,02H: 光标位置越界 [${row}, ${col}]`);
+          // 光标位置越界
         }
       } else if (ah === 0x06) {
         // 清屏或滚动窗口
@@ -239,10 +259,8 @@ export const useAssembler = () => {
          newBuffer = rows;
          newCursor = { r: 0, c: 0 };
          
-         logger(`INT 10H,06H: 清屏 (背景=${bgColor.toString(16)}H, 前景=${fgColor.toString(16)}H, 闪烁=${blink})`);
       } else {
         // AL != 0: 滚动窗口
-        logger(`INT 10H,06H: 滚动窗口 ${al} 行（未实现）`);
       }
     } else if (ah === 0x0E) {
       // 输出字符（电传打字机模式）
@@ -263,12 +281,11 @@ export const useAssembler = () => {
           }
         }
       }
-      logger(`INT 10H,0EH: 输出字符 '${char}'`);
     } else {
-      logger(`INT 10H,${ah.toString(16).toUpperCase()}H: 未实现的功能`);
+      // 未实现的功能
     }
     } catch (err) {
-      logger(`INT 10H 错误: ${err.message}`);
+      console.error(`INT 10H 错误: ${err.message}`);
     }
     
     return { newCursor, newBuffer };
@@ -283,12 +300,8 @@ export const useAssembler = () => {
     let newFlags = { ...flags };
     let newCursor = { ...cursor };
     let newBuffer = screenBuffer.map(row => [...row]);
+    let newCallStack = [...callStack];
     let interruptOccurred = false;
-    let batchLogs = [];
-
-    const batchLogger = (msg) => {
-        batchLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
-    };
 
     // 光速模式：运行到程序结束
     const isLightSpeed = (speed === 0 && isPlaying);
@@ -307,6 +320,26 @@ export const useAssembler = () => {
 
         const instruction = parsedInstructions[currentPc];
         
+        // 模拟 IP (指令指针) 更新
+        // 真实汇编中指令长度不一，这里我们模拟每条指令占用 2-3 个字节
+        // 简单的指令(如 INC, DEC)算 1-2 字节，复杂的(如 MOV 立即数)算 3 字节
+        // 为了视觉上的连贯性，我们使用一个基于行号的估算算法
+        const calculateFakeIP = (index) => {
+            // 基础偏移 0x0100 (模拟 COM 文件) 或 0x0000 (模拟 EXE)
+            // 你的截图是从 0003 开始的，我们用 0000 作为基准
+            let fakeIp = 0; 
+            for(let i=0; i<index; i++) {
+                const inst = parsedInstructions[i];
+                if(inst.type === 'EMPTY') continue;
+                // 简单启发式：有逗号的通常长一点
+                fakeIp += (inst.raw.includes(',') || inst.raw.includes('OFFSET')) ? 3 : 2;
+            }
+            return fakeIp & 0xFFFF;
+        };
+
+        // 更新当前指令的 IP
+        newRegisters.IP = calculateFakeIP(currentPc);
+
         try {
           const { op, args } = instruction;
           let nextPc = currentPc + 1;
@@ -369,13 +402,13 @@ export const useAssembler = () => {
             }
             
             // Immediate
-            if (!isNaN(parseInt(arg)) && !arg.startsWith('[') && !Object.keys(symbolTable).includes(arg) && !Object.keys(labelMap).includes(arg) && !['AX','BX','CX','DX','AH','AL','BH','BL','CH','CL','DH','DL','SP','BP','SI','DI'].includes(arg)) {
+            if (!isNaN(parseInt(arg)) && !arg.startsWith('[') && !Object.keys(symbolTable).includes(arg) && !Object.keys(labelMap).includes(arg) && !['AX','BX','CX','DX','AH','AL','BH','BL','CH','CL','DH','DL','SP','BP','SI','DI','CS','DS','SS','ES','IP'].includes(arg)) {
                  return arg.endsWith('H') ? parseInt(arg.slice(0, -1), 16) : parseInt(arg);
             }
             if (arg.endsWith('H') && !['AH','BH','CH','DH'].includes(arg)) return parseInt(arg.slice(0, -1), 16);
 
             // Register
-            if (['AX','BX','CX','DX','AH','AL','BH','BL','CH','CL','DH','DL','SP','BP','SI','DI'].includes(arg)) {
+            if (['AX','BX','CX','DX','AH','AL','BH','BL','CH','CL','DH','DL','SP','BP','SI','DI','CS','DS','SS','ES','IP'].includes(arg)) {
                 return getReg(arg, newRegisters);
             }
 
@@ -398,7 +431,7 @@ export const useAssembler = () => {
           };
 
           const setVal = (arg, val) => {
-              if (['AX','BX','CX','DX','AH','AL','BH','BL','CH','CL','DH','DL','SP','BP','SI','DI'].includes(arg)) {
+              if (['AX','BX','CX','DX','AH','AL','BH','BL','CH','CL','DH','DL','SP','BP','SI','DI','CS','DS','SS','ES','IP'].includes(arg)) {
                   newRegisters = setReg(arg, val, newRegisters);
               } else {
                   const ea = getEA(arg);
@@ -492,6 +525,101 @@ export const useAssembler = () => {
               setVal(val1, res);
               updateFlags(res, true, true, v1, val2);
               break;
+            }
+            case 'ADC': {
+              const v1 = getVal(val1);
+              const cf = newFlags.CF;
+              const res = v1 + val2 + cf;
+              setVal(val1, res);
+              updateFlags(res, false, true, v1, val2);
+              break;
+            }
+            case 'SBB': {
+              const v1 = getVal(val1);
+              const cf = newFlags.CF;
+              const res = v1 - val2 - cf;
+              setVal(val1, res);
+              updateFlags(res, true, true, v1, val2);
+              break;
+            }
+            case 'ROL': {
+                const v1 = getVal(val1);
+                const count = (val2 || 1) & 0x1F;
+                const isWord = true; // Simplified: assume word
+                const bits = isWord ? 16 : 8;
+                const mask = isWord ? 0xFFFF : 0xFF;
+                let res = v1;
+                for(let k=0; k<count; k++) {
+                    const msb = (res >> (bits - 1)) & 1;
+                    res = ((res << 1) | msb) & mask;
+                    newFlags.CF = msb;
+                }
+                setVal(val1, res);
+                // OF is defined only for count=1
+                if (count === 1) {
+                    const msb = (res >> (bits - 1)) & 1;
+                    newFlags.OF = (msb ^ newFlags.CF);
+                }
+                break;
+            }
+            case 'ROR': {
+                const v1 = getVal(val1);
+                const count = (val2 || 1) & 0x1F;
+                const isWord = true;
+                const bits = isWord ? 16 : 8;
+                const mask = isWord ? 0xFFFF : 0xFF;
+                let res = v1;
+                for(let k=0; k<count; k++) {
+                    const lsb = res & 1;
+                    res = ((res >> 1) | (lsb << (bits - 1))) & mask;
+                    newFlags.CF = lsb;
+                }
+                setVal(val1, res);
+                if (count === 1) {
+                    const msb = (res >> (bits - 1)) & 1;
+                    newFlags.OF = (msb ^ (res >> (bits - 2) & 1)); // XOR of two MSBs
+                }
+                break;
+            }
+            case 'RCL': {
+                const v1 = getVal(val1);
+                const count = (val2 || 1) & 0x1F;
+                const isWord = true;
+                const bits = isWord ? 16 : 8;
+                const mask = isWord ? 0xFFFF : 0xFF;
+                let res = v1;
+                for(let k=0; k<count; k++) {
+                    const msb = (res >> (bits - 1)) & 1;
+                    const oldCF = newFlags.CF;
+                    res = ((res << 1) | oldCF) & mask;
+                    newFlags.CF = msb;
+                }
+                setVal(val1, res);
+                if (count === 1) {
+                    const msb = (res >> (bits - 1)) & 1;
+                    newFlags.OF = (msb ^ newFlags.CF);
+                }
+                break;
+            }
+            case 'RCR': {
+                const v1 = getVal(val1);
+                const count = (val2 || 1) & 0x1F;
+                const isWord = true;
+                const bits = isWord ? 16 : 8;
+                const mask = isWord ? 0xFFFF : 0xFF;
+                let res = v1;
+                for(let k=0; k<count; k++) {
+                    const lsb = res & 1;
+                    const oldCF = newFlags.CF;
+                    res = ((res >> 1) | (oldCF << (bits - 1))) & mask;
+                    newFlags.CF = lsb;
+                }
+                setVal(val1, res);
+                if (count === 1) {
+                    const msb = (res >> (bits - 1)) & 1;
+                    newFlags.OF = (msb ^ (res >> (bits - 2) & 1)); // XOR of two MSBs
+                }
+                break;
             }
             case 'INC': {
               const v1 = getVal(val1);
@@ -702,20 +830,25 @@ export const useAssembler = () => {
               newRegisters.CX = (newRegisters.CX - 1) & 0xFFFF;
               if (newRegisters.CX !== 0 && labelMap.hasOwnProperty(val1)) {
                   nextPc = labelMap[val1];
-                  batchLogger(`LOOP: CX=${newRegisters.CX}, 跳转到标签 ${val1} (PC=${nextPc})`);
               } else if (newRegisters.CX === 0) {
-                  batchLogger(`LOOP: CX=0, 退出循环`);
+                  // 退出循环
               }
               break;
             case 'CALL': {
                 // PUSH IP (nextPc)
-                newRegisters.SP -= 2;
+                newRegisters.SP = (newRegisters.SP - 2) & 0xFFFF;
                 try {
                     safeWriteMemory(newRegisters.SP, nextPc, 2, newMemory);
                 } catch (err) {
                     throw new Error(`CALL 栈溢出: ${err.message}`);
                 }
                 if (labelMap.hasOwnProperty(val1)) {
+                    // Push to Call Stack
+                    newCallStack.push({ 
+                        name: val1, 
+                        retIp: nextPc,
+                        sp: newRegisters.SP 
+                    });
                     nextPc = labelMap[val1];
                 } else {
                     throw new Error(`未定义的标签: ${val1}`);
@@ -726,8 +859,12 @@ export const useAssembler = () => {
                 // POP IP
                 try {
                     const retAddr = safeReadMemory(newRegisters.SP, 2, newMemory);
-                    newRegisters.SP += 2;
+                    newRegisters.SP = (newRegisters.SP + 2) & 0xFFFF;
                     nextPc = retAddr;
+                    // Pop from Call Stack
+                    if (newCallStack.length > 0) {
+                        newCallStack.pop();
+                    }
                 } catch (err) {
                     throw new Error(`RET 栈下溢: ${err.message}`);
                 }
@@ -735,7 +872,7 @@ export const useAssembler = () => {
             }
             case 'PUSH': {
                 const v = getVal(val1);
-                newRegisters.SP -= 2;
+                newRegisters.SP = (newRegisters.SP - 2) & 0xFFFF;
                 try {
                     safeWriteMemory(newRegisters.SP, v, 2, newMemory);
                 } catch (err) {
@@ -747,7 +884,7 @@ export const useAssembler = () => {
                 try {
                     const v = safeReadMemory(newRegisters.SP, 2, newMemory);
                     setVal(val1, v);
-                    newRegisters.SP += 2;
+                    newRegisters.SP = (newRegisters.SP + 2) & 0xFFFF;
                 } catch (err) {
                     throw new Error(`POP 栈下溢: ${err.message}`);
                 }
@@ -760,13 +897,12 @@ export const useAssembler = () => {
                       setIsWaitingForInput(true);
                       setIsPlaying(false);
                       interruptOccurred = true;
-                      batchLogger("等待输入...");
                       if (isLightSpeed) {
                           clearInterval(intervalRef.current);
                           throw new Error("__BREAK__");
                       }
                   } else {
-                      const dosResult = handleDosInterrupt(newRegisters, newMemory, newCursor, newBuffer, batchLogger);
+                      const dosResult = handleDosInterrupt(newRegisters, newMemory, newCursor, newBuffer);
                       newCursor = dosResult.newCursor;
                       newBuffer = dosResult.newBuffer;
                       if (dosResult.newRegs) newRegisters = dosResult.newRegs;
@@ -778,12 +914,12 @@ export const useAssembler = () => {
                   }
               }
               else if (val1 === '10H') {
-                  const biosResult = handleBiosInterrupt(newRegisters, newCursor, newBuffer, batchLogger);
+                  const biosResult = handleBiosInterrupt(newRegisters, newCursor, newBuffer);
                   newCursor = biosResult.newCursor;
                   newBuffer = biosResult.newBuffer;
               }
               else {
-                  batchLogger(`INT ${val1}: 未实现的中断`);
+                  // 未实现的中断
               }
               interruptOccurred = true;
               break;
@@ -799,7 +935,6 @@ export const useAssembler = () => {
 
           // 检查断点
           if (tempNext < parsedInstructions.length && breakpoints.has(parsedInstructions[tempNext].originalIndex)) {
-            batchLogger(`⚠️ 断点触发: 第 ${parsedInstructions[tempNext].originalIndex + 1} 行`);
             setIsPlaying(false);
             if (isLightSpeed) clearInterval(intervalRef.current);
             break;
@@ -813,7 +948,6 @@ export const useAssembler = () => {
           const lineNum = instruction.originalIndex + 1;
           const errorMsg = `❌ 第 ${lineNum} 行错误: ${err.message}\n指令: ${instruction.raw}`;
           setError(errorMsg);
-          batchLogger(errorMsg);
           setIsPlaying(false);
           if (isLightSpeed) {
               clearInterval(intervalRef.current);
@@ -824,49 +958,28 @@ export const useAssembler = () => {
         }
     }
 
-    // 更新日志：光速模式也显示所有日志，只是去重
-    if (batchLogs.length > 0) {
-        if (isLightSpeed) {
-            // 光速模式：合并连续重复日志
-            const collapsedLogs = [];
-            let lastLog = batchLogs[0];
-            let count = 1;
-            
-            for (let i = 1; i < batchLogs.length; i++) {
-                if (batchLogs[i] === lastLog) {
-                    count++;
-                } else {
-                    collapsedLogs.push(count > 1 ? `${lastLog} (x${count})` : lastLog);
-                    lastLog = batchLogs[i];
-                    count = 1;
-                }
-            }
-            collapsedLogs.push(count > 1 ? `${lastLog} (x${count})` : lastLog);
-            // 日志按执行顺序添加（在显示层会反转，最新的在底部）
-            setLogs(prev => [...prev, ...collapsedLogs]);
-        } else {
-            // 非光速模式：按执行顺序添加（在显示层会反转，最新的在底部）
-            setLogs(prev => [...prev, ...batchLogs]);
-        }
-    }
-
     setRegisters(newRegisters);
     setMemory(newMemory);
     setFlags(newFlags);
     setPc(currentPc);
     setScreenBuffer(newBuffer);
     setCursor(newCursor);
+    setCallStack(newCallStack);
 
-  }, [pc, parsedInstructions, registers, memory, flags, cursor, screenBuffer, symbolTable, labelMap, handleDosInterrupt, handleBiosInterrupt, speed, isWaitingForInput, isPlaying]);
+  }, [pc, parsedInstructions, registers, memory, flags, cursor, screenBuffer, symbolTable, labelMap, handleDosInterrupt, handleBiosInterrupt, speed, isWaitingForInput, isPlaying, callStack]);
 
   const reload = useCallback((newCode) => {
     setCode(newCode);
     initialCodeRef.current = newCode;
     setPc(0);
-    setRegisters({ AX: 0, BX: 0, CX: 0, DX: 0, SP: MEMORY_SIZE - 2, BP: 0, SI: 0, DI: 0 });
-    setFlags({ ZF: 0, SF: 0, CF: 0, OF: 0, PF: 0 });
+    setRegisters({ 
+      AX: 0, BX: 0, CX: 0, DX: 0, 
+      SP: 0xFFFE, BP: 0, SI: 0, DI: 0,
+      CS: 0x04B0, DS: 0x04AE, SS: 0x04AD, ES: 0x049E, IP: 0
+    });
+    setFlags({ ZF: 0, SF: 0, CF: 0, OF: 0, PF: 0, AF: 0, TF: 0, IF: 1, DF: 0 });
     resetScreen();
-    setLogs([]);
+    setCallStack([]);
     setIsPlaying(false);
     setError(null);
   }, [resetScreen]);
@@ -902,7 +1015,6 @@ export const useAssembler = () => {
           
           setIsWaitingForInput(false);
           setIsPlaying(true);
-          addLog(`接收输入: '${char}' (${charCode.toString(16).toUpperCase()}H)`);
       }
   }, [isWaitingForInput, cursor]);
 
@@ -920,10 +1032,8 @@ export const useAssembler = () => {
       const newSet = new Set(prev);
       if (newSet.has(lineIndex)) {
         newSet.delete(lineIndex);
-        addLog(`🔴 移除断点: 第 ${lineIndex + 1} 行`);
       } else {
         newSet.add(lineIndex);
-        addLog(`🔴 设置断点: 第 ${lineIndex + 1} 行`);
       }
       return newSet;
     });
@@ -951,7 +1061,6 @@ export const useAssembler = () => {
     isPlaying, setIsPlaying,
     speed, setSpeed,
     error, setError,
-    logs,
     parsedInstructions,
     executeStep,
     reload,
@@ -961,6 +1070,7 @@ export const useAssembler = () => {
     toggleBreakpoint,
     watchVariables,
     addWatchVariable,
-    removeWatchVariable
+    removeWatchVariable,
+    callStack
   };
 };
