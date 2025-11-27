@@ -101,35 +101,39 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
   };
 
   return (
-      <div className="flex flex-col h-full bg-black rounded-lg border border-neutral-800 overflow-hidden font-mono">
+      <div className="memory-container">
           {/* Toolbar */}
-          <div className="flex flex-wrap gap-2 p-2 border-b border-neutral-800 bg-neutral-900 items-center justify-between shrink-0">
+          <div className="memory-toolbar">
               <div className="flex items-center gap-2">
-                  <div className="flex items-center bg-neutral-800 rounded px-2 py-1 border border-neutral-700 w-32">
+                  <div className="memory-addr-group">
                     <input 
                         value={jumpAddr}
                         onChange={(e) => setJumpAddr(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleJump()}
                         placeholder={`${segment.toString(16).toUpperCase().padStart(4, '0')}:${offset.toString(16).toUpperCase().padStart(4, '0')}`}
-                        className="bg-transparent border-none outline-none text-yellow-400 font-mono text-xs w-full placeholder-neutral-600 text-center"
+                        className="memory-input"
                     />
-                    <button onClick={handleJump} className="text-neutral-400 hover:text-yellow-400 ml-1">
-                        <Search size={12} />
+                    <button onClick={handleJump} className="text-gray-400 dark:text-neutral-600 hover:text-blue-600 dark:hover:text-yellow-500 ml-1">
+                        <Search size={10} />
                     </button>
                   </div>
                   
-                  <div className="flex gap-1">
-                    <button onClick={() => setOffset(Math.max(0, offset - bytesPerRow * rowCount))} className="p-1 hover:bg-neutral-700 rounded text-neutral-400 text-xs" title="Page Up">&lt;</button>
-                    <button onClick={() => setOffset((offset + bytesPerRow * rowCount) & 0xFFFF)} className="p-1 hover:bg-neutral-700 rounded text-neutral-400 text-xs" title="Page Down">&gt;</button>
+                  <div className="flex gap-0.5">
+                    <button onClick={() => setOffset(Math.max(0, offset - bytesPerRow * rowCount))} className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-800 rounded text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300" title="Page Up">
+                        <ArrowRight size={10} className="rotate-180"/>
+                    </button>
+                    <button onClick={() => setOffset((offset + bytesPerRow * rowCount) & 0xFFFF)} className="p-1 hover:bg-gray-200 dark:hover:bg-neutral-800 rounded text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300" title="Page Down">
+                        <ArrowRight size={10}/>
+                    </button>
                   </div>
               </div>
 
-              <div className="flex gap-1">
+              <div className="flex gap-1 overflow-x-auto no-scrollbar">
                   {['DS', 'CS', 'SS', 'SP', 'IP'].map(reg => (
                       <button 
                         key={reg}
                         onClick={() => jumpToRegister(reg)}
-                        className="px-1.5 py-0.5 text-[10px] bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-yellow-400 rounded border border-neutral-700 transition-colors"
+                        className="px-1.5 py-0.5 text-[9px] bg-white dark:bg-neutral-900 hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-500 dark:text-neutral-500 hover:text-blue-600 dark:hover:text-yellow-500 rounded border border-gray-200 dark:border-neutral-800 transition-colors font-medium"
                         title={`Jump to ${reg}`}
                       >
                         {reg}
@@ -137,16 +141,16 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                   ))}
               </div>
 
-              <div className="flex bg-neutral-800 rounded p-0.5 border border-neutral-700">
+              <div className="flex bg-white dark:bg-neutral-900 rounded p-0.5 border border-gray-200 dark:border-neutral-800">
                   <button 
                     onClick={() => setViewType('byte')} 
-                    className={`text-[9px] px-2 py-0.5 rounded ${viewType === 'byte' ? 'bg-neutral-700 text-yellow-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
+                    className={`text-[9px] px-2 py-0.5 rounded transition-all ${viewType === 'byte' ? 'bg-gray-100 dark:bg-neutral-800 text-blue-600 dark:text-yellow-500 shadow-sm' : 'text-gray-500 dark:text-neutral-600 hover:text-gray-700 dark:hover:text-neutral-400'}`}
                   >
                     BYTE
                   </button>
                   <button 
                     onClick={() => setViewType('word')} 
-                    className={`text-[9px] px-2 py-0.5 rounded ${viewType === 'word' ? 'bg-neutral-700 text-yellow-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
+                    className={`text-[9px] px-2 py-0.5 rounded transition-all ${viewType === 'word' ? 'bg-gray-100 dark:bg-neutral-800 text-blue-600 dark:text-yellow-500 shadow-sm' : 'text-gray-500 dark:text-neutral-600 hover:text-gray-700 dark:hover:text-neutral-400'}`}
                   >
                     WORD
                   </button>
@@ -154,11 +158,11 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
           </div>
 
           {/* Grid */}
-          <div ref={gridRef} className="flex-1 overflow-hidden p-2 font-mono text-[12px] bg-black text-neutral-300 selection:bg-neutral-700">
+          <div ref={gridRef} className="memory-grid-area">
               {rows.map(row => (
-                  <div key={row.addr} className="flex hover:bg-neutral-900 transition-colors group leading-relaxed h-[24px]">
+                  <div key={row.addr} className="memory-row-item group">
                       {/* Address: SEGMENT:OFFSET */}
-                      <div className="w-24 text-yellow-600/90 shrink-0 select-all cursor-text">
+                      <div className="memory-addr-label">
                           {segment.toString(16).padStart(4, '0').toUpperCase()}:{row.addr.toString(16).padStart(4, '0').toUpperCase()}
                       </div>
                       
@@ -174,17 +178,19 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                                         // Check IP (CS:IP)
                                         const isIP = segment === registers.CS && currOffset === registers.IP;
                                         
-                                        let style = "text-neutral-400";
+                                        let style = "text-gray-400 dark:text-neutral-500";
                                         let bgStyle = "";
                                         
                                         if (isSP) {
-                                            style = "text-red-400 font-bold";
-                                            bgStyle = "bg-red-900/30";
+                                            style = "text-red-600 dark:text-red-400 font-bold";
+                                            bgStyle = "bg-red-100 dark:bg-red-500/10 rounded-sm";
                                         } else if (isIP) {
-                                            style = "text-green-400 font-bold";
-                                            bgStyle = "bg-green-900/30";
+                                            style = "text-green-600 dark:text-green-400 font-bold";
+                                            bgStyle = "bg-green-100 dark:bg-green-500/10 rounded-sm";
                                         } else if (b === 0) {
-                                            style = "text-neutral-700";
+                                            style = "text-gray-300 dark:text-neutral-800";
+                                        } else {
+                                            style = "text-gray-800 dark:text-neutral-300";
                                         }
                                         
                                         return (
@@ -196,7 +202,7 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                                 </div>
                                 
                                 {/* Separator */}
-                                <div className="text-neutral-700">-</div>
+                                <div className="text-gray-200 dark:text-neutral-800">-</div>
 
                                 {/* Second 8 bytes */}
                                 <div className="flex gap-1.5">
@@ -205,17 +211,19 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                                         const isSP = segment === registers.SS && (currOffset === registers.SP || currOffset === registers.SP + 1);
                                         const isIP = segment === registers.CS && currOffset === registers.IP;
                                         
-                                        let style = "text-neutral-400";
+                                        let style = "text-gray-400 dark:text-neutral-500";
                                         let bgStyle = "";
                                         
                                         if (isSP) {
-                                            style = "text-red-400 font-bold";
-                                            bgStyle = "bg-red-900/30";
+                                            style = "text-red-600 dark:text-red-400 font-bold";
+                                            bgStyle = "bg-red-100 dark:bg-red-500/10 rounded-sm";
                                         } else if (isIP) {
-                                            style = "text-green-400 font-bold";
-                                            bgStyle = "bg-green-900/30";
+                                            style = "text-green-600 dark:text-green-400 font-bold";
+                                            bgStyle = "bg-green-100 dark:bg-green-500/10 rounded-sm";
                                         } else if (b === 0) {
-                                            style = "text-neutral-700";
+                                            style = "text-gray-300 dark:text-neutral-800";
+                                        } else {
+                                            style = "text-gray-800 dark:text-neutral-300";
                                         }
                                         
                                         return (
@@ -237,14 +245,16 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                                       
                                       const isSP = segment === registers.SS && (currOffset === registers.SP || currOffset === registers.SP + 1);
                                       
-                                      let style = "text-neutral-400";
+                                      let style = "text-gray-400 dark:text-neutral-500";
                                       let bgStyle = "";
 
                                       if (isSP) {
-                                          style = "text-red-400 font-bold";
-                                          bgStyle = "bg-red-900/30";
+                                          style = "text-red-600 dark:text-red-400 font-bold";
+                                          bgStyle = "bg-red-100 dark:bg-red-500/10 rounded-sm";
                                       } else if ((b1 === 0 && b2 === 0)) {
-                                          style = "text-neutral-700";
+                                          style = "text-gray-300 dark:text-neutral-800";
+                                      } else {
+                                          style = "text-gray-800 dark:text-neutral-300";
                                       }
 
                                       const val = (b1 !== null && b2 !== null) ? (b2 << 8 | b1) : null;
@@ -258,7 +268,7 @@ const MemoryView = React.memo(({ memory, registers, sp, ds = 0 }) => {
                               </div>
                           )}
                       </div>
-                      <div className="w-32 text-neutral-500 tracking-widest border-l border-neutral-800 pl-3 font-sans opacity-80 group-hover:opacity-100 group-hover:text-neutral-300">
+                      <div className="memory-ascii-col">
                           {row.chars.join('')}
                       </div>
                   </div>
