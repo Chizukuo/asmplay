@@ -40,8 +40,7 @@ export const parseCode = (code) => {
   let instructions = [];
   let dataMap = {}; 
   let labelMap = {};
-  // DS = 0x04E0，数据段从物理地址 0x04E00 开始（真实DOS风格）
-  // 符号表存储段内偏移量（相对于DS:0000），由前端转换为物理地址
+  // 采用简化的 DOS 风格段基址；dataMap 存储相对于 DS:0000 的偏移
   const DS_SEGMENT = 0x04E0;
   const CS_SEGMENT = 0x04B0;
   const SS_SEGMENT = 0x0500;
@@ -53,8 +52,7 @@ export const parseCode = (code) => {
   let inDataSegment = false;
   let inCodeSegment = false;
   
-  // 识别段名并存储段地址（用于 MOV AX, DATA 等指令）
-  // 这样当代码中使用 MOV AX, DATA 时，DATA 会被解析为数据段地址 0x04E0
+  // 存储自定义段名到段地址（如 DATA -> DS_SEGMENT）
   let segmentNames = {};
 
   // Pass 1: Data Segment Processing
@@ -172,12 +170,7 @@ export const parseCode = (code) => {
   inCodeSegment = false;
   inDataSegment = false;
   
-  // CS = 0x04B0，代码段从物理地址 0x04B00 开始（真实DOS风格地址）
-  // 真实DOS风格内存布局（参考DEBUG DS=04AE, SS=04AD, CS=04B1）：
-  // PSP:     0x04A00-0x04AFF (256B, 程序段前缀)
-  // 代码段:  0x04B00-0x04DFF (CS=0x04B0, ~3KB)
-  // 数据段:  0x04E00-0x04FFF (DS=0x04E0, ~512B)
-  // 栈段:    0x05000-0x05FFF (SS=0x0500, 4KB, SP从0x0800开始向下)
+  // 代码段基址（简化示例）
   const CODE_SEGMENT_BASE = 0x04B00;
   let codeMemIndex = CODE_SEGMENT_BASE;
   const instructionAddresses = []; // 存储每条指令的物理地址

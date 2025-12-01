@@ -8,14 +8,11 @@ export const useAssembler = () => {
     return saved || PRESET_PROGRAMS.default;
   });
   const [pc, setPc] = useState(0); 
+  // 寄存器初始值（采用简化的 DOS 风格段布局）
+  // 段基址示例：CS=0x04B0, DS=0x04E0, SS=0x0500
   const [registers, setRegisters] = useState({ 
     AX: 0, BX: 0, CX: 0, DX: 0,
     SP: 0x0800, BP: 0, SI: 0, DI: 0,
-    // 真实DOS风格内存布局（参考DEBUG截图 DS=04AE, SS=04AD, CS=04B1）：
-    // PSP:     0x04A0:0x0000 - 0x04A0:0x00FF (256字节，程序段前缀)
-    // 代码段:  0x04B0:0x0000 开始 (CS, 在PSP后约256字节)
-    // 数据段:  0x04E0:0x0000 开始 (DS, 在代码后约3KB)
-    // 栈段:    0x0500:0x0000 开始 (SS, 给栈2KB空间，SP从0x0800开始向下)
     CS: 0x04B0, DS: 0x04E0, SS: 0x0500, ES: 0x04E0, IP: 0
   });
   const [flags, setFlags] = useState({ 
@@ -33,18 +30,17 @@ export const useAssembler = () => {
   const [breakpoints, setBreakpoints] = useState(new Set());
   const [watchVariables, setWatchVariables] = useState([]);
   const [callStack, setCallStack] = useState([]);
-  const [keyBuffer, setKeyBuffer] = useState([]); // 按键缓冲区
+  const [keyBuffer, setKeyBuffer] = useState([]);
   const [lastKeyPressed, setLastKeyPressed] = useState(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState(null);
   const [parsedInstructions, setParsedInstructions] = useState([]);
-  const [segmentTable, setSegmentTable] = useState({}); // 存储段名和段地址
+  const [segmentTable, setSegmentTable] = useState({});
 
   const intervalRef = useRef(null);
   const initialCodeRef = useRef(code);
 
-  // 自动保存代码到 localStorage
   useEffect(() => {
     const timer = setTimeout(() => {
       localStorage.setItem('asm_code', code);
@@ -65,12 +61,10 @@ export const useAssembler = () => {
     setCursor({ r: 0, c: 0 });
   }, []);
 
-  // 初始化屏幕
   useEffect(() => {
     resetScreen();
   }, [resetScreen]);
 
-  // 解析代码
   useEffect(() => {
     const { newMemory, dataMap, labelMap: lMap, instructions, dataSize, instructionAddresses, instructionOffsets, segmentNames } = parseCode(code);
     setMemory(newMemory);
@@ -81,29 +75,24 @@ export const useAssembler = () => {
     setSegmentTable(segmentNames || {});
   }, [code]);
 
-  // 物理地址计算工具函数
   const calculatePhysicalAddress = (segment, offset) => {
-    // 实模式：物理地址 = (段地址 << 4) + 偏移地址
-    // 限制在20位地址空间内（1MB）
+    // 实模式：物理地址 = (段 << 4) + 偏移，限制在20位地址空间
     const segBase = (segment << 4) & 0xFFFFF;
-    const physAddr = (segBase + offset) & 0xFFFFF;
-    return physAddr;
+    return (segBase + offset) & 0xFFFFF;
   };
 
-  // 内存边界检查
   const isValidMemoryAddress = (addr, size = 1) => {
     return addr >= 0 && addr + size <= MEMORY_SIZE;
   };
 
-  // 安全读取内存（支持段地址和线性地址）
   const safeReadMemory = (addr, size = 2, memory, useSegment = false, segment = 0) => {
-    // 如果使用段地址模型，计算物理地址
+    // 支持段地址模型（useSegment=true）或线性地址
     let physAddr = addr;
     if (useSegment) {
       physAddr = calculatePhysicalAddress(segment, addr);
     }
     
-    // 增强的边界检查，确保不会访问到 MEMORY_SIZE 或更大的地址
+    // 边界检查
     if (!isValidMemoryAddress(physAddr, size) || physAddr >= MEMORY_SIZE) {
       throw new Error(`内存访问越界: 地址 0x${physAddr.toString(16).toUpperCase()} (size=${size})`);
     }
@@ -112,15 +101,14 @@ export const useAssembler = () => {
     return 0;
   };
 
-  // 安全写入内存（支持段地址和线性地址）
   const safeWriteMemory = (addr, value, size = 2, memory, useSegment = false, segment = 0) => {
-    // 如果使用段地址模型，计算物理地址
+    // 支持段地址模型或线性地址
     let physAddr = addr;
     if (useSegment) {
       physAddr = calculatePhysicalAddress(segment, addr);
     }
     
-    // 增强的边界检查，确保不会访问到 MEMORY_SIZE 或更大的地址
+    // 边界检查
     if (!isValidMemoryAddress(physAddr, size) || physAddr >= MEMORY_SIZE) {
       throw new Error(`内存访问越界: 地址 0x${physAddr.toString(16).toUpperCase()} (size=${size})`);
     }
@@ -137,7 +125,7 @@ export const useAssembler = () => {
     let { r, c } = currentCursor;
     for (let i = 0; i < str.length; i++) {
       if (r >= SCREEN_ROWS) break;
-      // 保持当前屏幕的背景和前景色
+      // 保持现有样式并写入字符
       newBuffer[r][c] = { ...newBuffer[r][c], char: str[i] };
       c++;
       if (c >= SCREEN_COLS) { c = 0; r++; }
