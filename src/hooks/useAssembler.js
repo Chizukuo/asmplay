@@ -659,12 +659,22 @@ export const useAssembler = () => {
           const isReg8 = (arg) => typeof arg === 'string' && ['AL','BL','CL','DL','AH','BH','CH','DH'].includes(arg);
           const val2Arg = realArgs.length > 1 ? realArgs[1] : null;
           
-          let is8BitOp = (val1 && isReg8(val1)) || (val2Arg && isReg8(val2Arg));
-          
-          // Check for explicit size directives in memory operands
-          if (!is8BitOp) {
-            if (val1 && typeof val1 === 'string' && val1.toUpperCase().includes('BYTE PTR')) is8BitOp = true;
-            if (val2Arg && typeof val2Arg === 'string' && val2Arg.toUpperCase().includes('BYTE PTR')) is8BitOp = true;
+          let is8BitOp = false;
+          const isShiftOp = ['ROL', 'ROR', 'RCL', 'RCR', 'SHL', 'SHR', 'SAL', 'SAR'].includes(op);
+
+          if (isShiftOp) {
+             // For shift/rotate, size is determined ONLY by the destination (first operand)
+             // The count operand (CL or imm) is always 8-bit but doesn't affect operation size
+             is8BitOp = val1 && isReg8(val1);
+             if (!is8BitOp && val1 && typeof val1 === 'string' && val1.toUpperCase().includes('BYTE PTR')) is8BitOp = true;
+          } else {
+             is8BitOp = (val1 && isReg8(val1)) || (val2Arg && isReg8(val2Arg));
+             
+             // Check for explicit size directives in memory operands
+             if (!is8BitOp) {
+               if (val1 && typeof val1 === 'string' && val1.toUpperCase().includes('BYTE PTR')) is8BitOp = true;
+               if (val2Arg && typeof val2Arg === 'string' && val2Arg.toUpperCase().includes('BYTE PTR')) is8BitOp = true;
+             }
           }
 
           const operandSize = is8BitOp ? 1 : 2;
