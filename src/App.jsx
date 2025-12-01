@@ -57,8 +57,9 @@ const AutoResizingContainer = ({ children }) => {
         style={{ 
           transform: `scale(${scale})`, 
           transformOrigin: 'center center',
-          width: 'max-content',
-          height: 'max-content'
+          width: '100%',
+          maxWidth: '1024px', // Limit max width to prevent excessive stretching on large screens
+          height: 'auto'
         }}
       >
         {children}
@@ -177,6 +178,7 @@ export default function AssemblyVisualizer() {
     registers,
     flags,
     screenBuffer,
+    screenCols,
     cursor,
     isPlaying, setIsPlaying,
     speed, setSpeed,
@@ -802,7 +804,7 @@ export default function AssemblyVisualizer() {
                         <div 
                           className="monitor-grid"
                           style={{ 
-                              '--cols': SCREEN_COLS,
+                              '--cols': screenCols || SCREEN_COLS,
                               '--rows': SCREEN_ROWS
                           }}
                         >
