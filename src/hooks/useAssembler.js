@@ -39,6 +39,7 @@ export const useAssembler = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState(null);
   const [parsedInstructions, setParsedInstructions] = useState([]);
+  const [segmentTable, setSegmentTable] = useState({}); // 存储段名和段地址
 
   const intervalRef = useRef(null);
   const initialCodeRef = useRef(code);
@@ -71,12 +72,13 @@ export const useAssembler = () => {
 
   // 解析代码
   useEffect(() => {
-    const { newMemory, dataMap, labelMap: lMap, instructions, dataSize, instructionAddresses, instructionOffsets } = parseCode(code);
+    const { newMemory, dataMap, labelMap: lMap, instructions, dataSize, instructionAddresses, instructionOffsets, segmentNames } = parseCode(code);
     setMemory(newMemory);
     setSymbolTable(dataMap);
     setLabelMap(lMap);
     setParsedInstructions(instructions);
     setInstructionAddresses(instructionAddresses || []);
+    setSegmentTable(segmentNames || {});
   }, [code]);
 
   // 物理地址计算工具函数
@@ -507,7 +509,7 @@ export const useAssembler = () => {
               return isNaN(num) ? 0 : num;
           };
 
-          const getVal = (arg) => {
+          const getVal = (arg, size = null) => {
             if (!arg) return 0;
 
             // Handle OFFSET
@@ -527,8 +529,9 @@ export const useAssembler = () => {
             // 当代码中使用 MOV AX, DATA 时，返回数据段的段地址
             if (typeof arg === 'string') {
               const upperArg = arg.toUpperCase();
-              if (symbolTable[upperArg] !== undefined) {
-                return symbolTable[upperArg];
+              // 优先检查段名表
+              if (segmentTable[upperArg] !== undefined) {
+                return segmentTable[upperArg];
               }
               // 兜底：如果 symbolTable 中没有，检查是否是常见的段名
               if (upperArg === 'DATA') return newRegisters.DS;
@@ -537,6 +540,7 @@ export const useAssembler = () => {
             }
             
             // Immediate
+            // 注意：如果 arg 在 symbolTable 中，说明它是变量，不应作为立即数处理（除非是 OFFSET）
             if (!isNaN(parseInt(arg)) && !arg.startsWith('[') && !Object.keys(symbolTable).includes(arg) && !Object.keys(labelMap).includes(arg) && !['AX','BX','CX','DX','AH','AL','BH','BL','CH','CL','DH','DL','SP','BP','SI','DI','CS','DS','SS','ES','IP'].includes(arg)) {
                  return arg.endsWith('H') ? parseInt(arg.slice(0, -1), 16) : parseInt(arg);
             }
@@ -553,7 +557,9 @@ export const useAssembler = () => {
                 try {
                     // getEA 返回的已经是段内偏移量
                     // 统一使用 DS:offset 访问数据段
-                    return safeReadMemory(ea, 2, newMemory, true, newRegisters.DS);
+                    // 如果没有指定size，默认读取2字节
+                    const readSize = size !== null ? size : 2;
+                    return safeReadMemory(ea, readSize, newMemory, true, newRegisters.DS);
                 } catch (err) {
                     throw new Error(`${err.message} (访问 ${arg})`);
                 }
@@ -567,7 +573,7 @@ export const useAssembler = () => {
             return 0;
           };
 
-          const setVal = (arg, val) => {
+          const setVal = (arg, val, size = null) => {
               if (['AX','BX','CX','DX','AH','AL','BH','BL','CH','CL','DH','DL','SP','BP','SI','DI','CS','DS','SS','ES','IP'].includes(arg)) {
                   newRegisters = setReg(arg, val, newRegisters);
               } else {
@@ -576,7 +582,9 @@ export const useAssembler = () => {
                       try {
                           // getEA 返回的已经是段内偏移量
                           // 统一使用 DS:offset 写入数据段
-                          safeWriteMemory(ea, val, 2, newMemory, true, newRegisters.DS);
+                          // 如果没有指定size，默认写入2字节
+                          const writeSize = size !== null ? size : 2;
+                          safeWriteMemory(ea, val, writeSize, newMemory, true, newRegisters.DS);
                       } catch (err) {
                           throw new Error(`${err.message} (写入 ${arg})`);
                       }
@@ -646,55 +654,74 @@ export const useAssembler = () => {
           }
 
           const val1 = realArgs[0];
+          // 判断操作数大小：如果任一操作数是8位寄存器，则操作按8位处理
+          // 这解决了 MOV Z, AL 这样的指令（Z是内存变量，AL是8位寄存器）
+          const isReg8 = (arg) => typeof arg === 'string' && ['AL','BL','CL','DL','AH','BH','CH','DH'].includes(arg);
+          const val2Arg = realArgs.length > 1 ? realArgs[1] : null;
+          
+          let is8BitOp = (val1 && isReg8(val1)) || (val2Arg && isReg8(val2Arg));
+          
+          // Check for explicit size directives in memory operands
+          if (!is8BitOp) {
+            if (val1 && typeof val1 === 'string' && val1.toUpperCase().includes('BYTE PTR')) is8BitOp = true;
+            if (val2Arg && typeof val2Arg === 'string' && val2Arg.toUpperCase().includes('BYTE PTR')) is8BitOp = true;
+          }
+
+          const operandSize = is8BitOp ? 1 : 2;
+          
           // For 2nd arg, if it's a register/memory, get value. If immediate, use it.
           // But getVal handles all.
-          const val2 = realArgs.length > 1 ? getVal(realArgs[1]) : 0;
+          const val2 = realArgs.length > 1 ? getVal(realArgs[1], operandSize) : 0;
 
           switch (op) {
             case 'MOV':
               // 允许所有寄存器赋值，包括段寄存器
               // 注意：8086中段寄存器不能直接用立即数赋值，但可以从通用寄存器赋值
-              setVal(val1, val2);
+              setVal(val1, val2, operandSize);
               break;
             case 'LEA': {
                 const ea = getEA(realArgs[1]);
-                if (ea !== null) setVal(val1, ea);
+                if (ea !== null) setVal(val1, ea, operandSize);
                 break;
             }
             case 'ADD': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const res = v1 + val2;
-              setVal(val1, res);
-              updateFlags(res, false, true, v1, val2);
+              const is8Bit = operandSize === 1;
+              setVal(val1, res, operandSize);
+              updateFlags(res, false, !is8Bit, v1, val2);
               break;
             }
             case 'SUB': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const res = v1 - val2;
-              setVal(val1, res);
-              updateFlags(res, true, true, v1, val2);
+              const is8Bit = operandSize === 1;
+              setVal(val1, res, operandSize);
+              updateFlags(res, true, !is8Bit, v1, val2);
               break;
             }
             case 'ADC': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const cf = newFlags.CF;
               const res = v1 + val2 + cf;
-              setVal(val1, res);
-              updateFlags(res, false, true, v1, val2);
+              const is8Bit = operandSize === 1;
+              setVal(val1, res, operandSize);
+              updateFlags(res, false, !is8Bit, v1, val2 + cf);
               break;
             }
             case 'SBB': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const cf = newFlags.CF;
               const res = v1 - val2 - cf;
-              setVal(val1, res);
-              updateFlags(res, true, true, v1, val2);
+              const is8Bit = operandSize === 1;
+              setVal(val1, res, operandSize);
+              updateFlags(res, true, !is8Bit, v1, val2 + cf);
               break;
             }
             case 'ROL': {
-                const v1 = getVal(val1);
+                const v1 = getVal(val1, operandSize);
                 const count = (val2 || 1) & 0x1F;
-                const isWord = true; // Simplified: assume word
+                const isWord = operandSize === 2;
                 const bits = isWord ? 16 : 8;
                 const mask = isWord ? 0xFFFF : 0xFF;
                 let res = v1;
@@ -703,7 +730,7 @@ export const useAssembler = () => {
                     res = ((res << 1) | msb) & mask;
                     newFlags.CF = msb;
                 }
-                setVal(val1, res);
+                setVal(val1, res, operandSize);
                 // OF is defined only for count=1
                 if (count === 1) {
                     const msb = (res >> (bits - 1)) & 1;
@@ -712,9 +739,9 @@ export const useAssembler = () => {
                 break;
             }
             case 'ROR': {
-                const v1 = getVal(val1);
+                const v1 = getVal(val1, operandSize);
                 const count = (val2 || 1) & 0x1F;
-                const isWord = true;
+                const isWord = operandSize === 2;
                 const bits = isWord ? 16 : 8;
                 const mask = isWord ? 0xFFFF : 0xFF;
                 let res = v1;
@@ -723,7 +750,7 @@ export const useAssembler = () => {
                     res = ((res >> 1) | (lsb << (bits - 1))) & mask;
                     newFlags.CF = lsb;
                 }
-                setVal(val1, res);
+                setVal(val1, res, operandSize);
                 if (count === 1) {
                     const msb = (res >> (bits - 1)) & 1;
                     newFlags.OF = (msb ^ (res >> (bits - 2) & 1)); // XOR of two MSBs
@@ -731,9 +758,9 @@ export const useAssembler = () => {
                 break;
             }
             case 'RCL': {
-                const v1 = getVal(val1);
+                const v1 = getVal(val1, operandSize);
                 const count = (val2 || 1) & 0x1F;
-                const isWord = true;
+                const isWord = operandSize === 2;
                 const bits = isWord ? 16 : 8;
                 const mask = isWord ? 0xFFFF : 0xFF;
                 let res = v1;
@@ -743,7 +770,7 @@ export const useAssembler = () => {
                     res = ((res << 1) | oldCF) & mask;
                     newFlags.CF = msb;
                 }
-                setVal(val1, res);
+                setVal(val1, res, operandSize);
                 if (count === 1) {
                     const msb = (res >> (bits - 1)) & 1;
                     newFlags.OF = (msb ^ newFlags.CF);
@@ -751,9 +778,9 @@ export const useAssembler = () => {
                 break;
             }
             case 'RCR': {
-                const v1 = getVal(val1);
+                const v1 = getVal(val1, operandSize);
                 const count = (val2 || 1) & 0x1F;
-                const isWord = true;
+                const isWord = operandSize === 2;
                 const bits = isWord ? 16 : 8;
                 const mask = isWord ? 0xFFFF : 0xFF;
                 let res = v1;
@@ -763,7 +790,7 @@ export const useAssembler = () => {
                     res = ((res >> 1) | (oldCF << (bits - 1))) & mask;
                     newFlags.CF = lsb;
                 }
-                setVal(val1, res);
+                setVal(val1, res, operandSize);
                 if (count === 1) {
                     const msb = (res >> (bits - 1)) & 1;
                     newFlags.OF = (msb ^ (res >> (bits - 2) & 1)); // XOR of two MSBs
@@ -771,25 +798,27 @@ export const useAssembler = () => {
                 break;
             }
             case 'INC': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const res = v1 + 1;
-              setVal(val1, res);
-              updateFlags(res, false, true, v1, 1);
+              setVal(val1, res, operandSize);
+              const is8Bit = operandSize === 1;
+              updateFlags(res, false, !is8Bit, v1, 1);
               break;
             }
             case 'DEC': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const res = v1 - 1;
-              setVal(val1, res);
-              updateFlags(res, true, true, v1, 1);
+              setVal(val1, res, operandSize);
+              const is8Bit = operandSize === 1;
+              updateFlags(res, true, !is8Bit, v1, 1);
               break;
             }
             case 'MUL': {
                 // MUL src. If byte: AX = AL * src. If word: DX:AX = AX * src.
                 // Determine size based on operand? Simplified: assume word if reg is 16bit or mem.
                 // For simplicity, let's check if val1 is 8-bit reg.
-                const is8Bit = ['AL','BL','CL','DL','AH','BH','CH','DH'].includes(val1);
-                const v1 = getVal(val1); // This is the src
+                const is8Bit = operandSize === 1;
+                const v1 = getVal(val1, operandSize); // This is the src
                 if (is8Bit) {
                     const al = newRegisters.AX & 0xFF;
                     const res = al * v1;
@@ -805,22 +834,33 @@ export const useAssembler = () => {
                 break;
             }
             case 'DIV': {
-                const v1 = getVal(val1); // src
+                const v1 = getVal(val1, operandSize); // divisor (除数)
                 if (v1 === 0) throw new Error("Divide by zero");
-                const is8Bit = ['AL','BL','CL','DL','AH','BH','CH','DH'].includes(val1);
+                
+                // 判断是8位还是16位除法：
+                // 8位除法：除数是8位寄存器或字节内存，被除数是AX，商->AL，余数->AH
+                // 16位除法：除数是16位寄存器或字内存，被除数是DX:AX，商->AX，余数->DX
+                const is8Bit = operandSize === 1;
+                
                 if (is8Bit) {
-                    const ax = newRegisters.AX;
-                    const quot = Math.floor(ax / v1);
-                    const rem = ax % v1;
+                    // 8位除法：AX ÷ divisor = AL(商) ... AH(余数)
+                    const ax = newRegisters.AX & 0xFFFF;
+                    const divisor = v1 & 0xFF;
+                    const quot = Math.floor(ax / divisor);
+                    const rem = ax % divisor;
                     if (quot > 0xFF) throw new Error("Divide overflow");
-                    newRegisters.AX = (rem << 8) | quot;
+                    // AL = 商，AH = 余数
+                    newRegisters.AX = ((rem & 0xFF) << 8) | (quot & 0xFF);
                 } else {
-                    const dxax = (newRegisters.DX << 16) | newRegisters.AX;
-                    const quot = Math.floor(dxax / v1);
-                    const rem = dxax % v1;
+                    // 16位除法：DX:AX ÷ divisor = AX(商) ... DX(余数)
+                    const dxax = ((newRegisters.DX & 0xFFFF) << 16) | (newRegisters.AX & 0xFFFF);
+                    const divisor = v1 & 0xFFFF;
+                    const quot = Math.floor(dxax / divisor);
+                    const rem = dxax % divisor;
                     if (quot > 0xFFFF) throw new Error("Divide overflow");
-                    newRegisters.AX = quot;
-                    newRegisters.DX = rem;
+                    // AX = 商，DX = 余数
+                    newRegisters.AX = quot & 0xFFFF;
+                    newRegisters.DX = rem & 0xFFFF;
                 }
                 break;
             }
@@ -839,51 +879,51 @@ export const useAssembler = () => {
                 break;
             }
             case 'AND': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const res = v1 & val2;
-              setVal(val1, res);
-              updateFlags(res);
+              setVal(val1, res, operandSize);
+              updateFlags(res, false, operandSize === 2);
               break;
             }
             case 'OR': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const res = v1 | val2;
-              setVal(val1, res);
-              updateFlags(res);
+              setVal(val1, res, operandSize);
+              updateFlags(res, false, operandSize === 2);
               break;
             }
             case 'XOR': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const res = v1 ^ val2;
-              setVal(val1, res);
-              updateFlags(res);
+              setVal(val1, res, operandSize);
+              updateFlags(res, false, operandSize === 2);
               break;
             }
             case 'NOT': {
-                const v1 = getVal(val1);
-                setVal(val1, ~v1);
+                const v1 = getVal(val1, operandSize);
+                setVal(val1, ~v1, operandSize);
                 break;
             }
             case 'SHL': {
-                const v1 = getVal(val1);
+                const v1 = getVal(val1, operandSize);
                 const count = val2 || 1;
                 const res = v1 << count;
-                setVal(val1, res);
-                updateFlags(res);
+                setVal(val1, res, operandSize);
+                updateFlags(res, false, operandSize === 2);
                 break;
             }
             case 'SHR': {
-                const v1 = getVal(val1);
+                const v1 = getVal(val1, operandSize);
                 const count = val2 || 1;
                 const res = v1 >>> count;
-                setVal(val1, res);
-                updateFlags(res);
+                setVal(val1, res, operandSize);
+                updateFlags(res, false, operandSize === 2);
                 break;
             }
             case 'CMP': {
-              const v1 = getVal(val1);
+              const v1 = getVal(val1, operandSize);
               const res = v1 - val2;
-              updateFlags(res, true);
+              updateFlags(res, true, operandSize === 2, v1, val2);
               break;
             }
             case 'JMP':
@@ -955,23 +995,23 @@ export const useAssembler = () => {
               // No operation
               break;
             case 'XCHG': {
-                const v1 = getVal(val1);
-                const v2 = getVal(val2);
-                setVal(val1, v2);
-                setVal(val2, v1);
+                const v1 = getVal(val1, operandSize);
+                const v2 = getVal(val2, operandSize);
+                setVal(val1, v2, operandSize);
+                setVal(val2, v1, operandSize);
                 break;
             }
             case 'NEG': {
-                const v1 = getVal(val1);
+                const v1 = getVal(val1, operandSize);
                 const res = -v1;
-                setVal(val1, res);
+                setVal(val1, res, operandSize);
                 updateFlags(res, true);
                 break;
             }
             case 'TEST': {
-                const v1 = getVal(val1);
+                const v1 = getVal(val1, operandSize);
                 const res = v1 & val2;
-                updateFlags(res);
+                updateFlags(res, false, operandSize === 2);
                 break;
             }
             case 'CLC':
@@ -1165,6 +1205,16 @@ export const useAssembler = () => {
   const reload = useCallback((newCode) => {
     setCode(newCode);
     initialCodeRef.current = newCode;
+
+    // 强制重新解析以重置内存（即使代码未变）
+    const { newMemory, dataMap, labelMap: lMap, instructions, instructionAddresses: iAddrs, segmentNames } = parseCode(newCode);
+    setMemory(newMemory);
+    setSymbolTable(dataMap);
+    setLabelMap(lMap);
+    setParsedInstructions(instructions);
+    setInstructionAddresses(iAddrs || []);
+    setSegmentTable(segmentNames || {});
+
     setPc(0);
     setRegisters({ 
       AX: 0, BX: 0, CX: 0, DX: 0, 
@@ -1176,6 +1226,10 @@ export const useAssembler = () => {
     setCallStack([]);
     setIsPlaying(false);
     setError(null);
+    setBreakpoints(new Set());
+    setKeyBuffer([]);
+    setLastKeyPressed(null);
+    setIsWaitingForInput(false);
   }, [resetScreen]);
 
   const handleInput = useCallback((char) => {

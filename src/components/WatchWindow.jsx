@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, AlertCircle, Plus, Trash2, Hash, Binary, Type } from 'lucide-react';
 
-const WatchWindow = ({ watchVariables, symbolTable, memory, onRemove, onAdd }) => {
+const WatchWindow = ({ watchVariables, symbolTable, memory, ds, onRemove, onAdd }) => {
   const [newVar, setNewVar] = useState('');
   const [showAddPanel, setShowAddPanel] = useState(false);
   
@@ -79,7 +79,10 @@ const WatchWindow = ({ watchVariables, symbolTable, memory, onRemove, onAdd }) =
           </div>
         ) : (
           watchVariables.map(varName => {
-            const addr = symbolTable[varName];
+            const offset = symbolTable[varName];
+            if (offset === undefined) return null;
+            
+            const addr = ((ds || 0) << 4) + offset;
             // Try to read as word first
             const valLow = memory[addr];
             const valHigh = memory[addr + 1];
@@ -92,7 +95,7 @@ const WatchWindow = ({ watchVariables, symbolTable, memory, onRemove, onAdd }) =
                     <div className="text-blue-600 dark:text-yellow-500 font-bold text-xs flex items-center gap-2">
                         {varName}
                         <span className="text-[9px] font-normal text-gray-500 dark:text-neutral-500 bg-white dark:bg-black px-1 rounded border border-gray-200 dark:border-neutral-800">
-                            0x{addr.toString(16).toUpperCase().padStart(4,'0')}
+                            {(ds || 0).toString(16).toUpperCase().padStart(4,'0')}:{offset.toString(16).toUpperCase().padStart(4,'0')}
                         </span>
                     </div>
                   </div>

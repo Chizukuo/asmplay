@@ -63,21 +63,33 @@ export const parseCode = (code) => {
     if (!line) continue;
 
     // 识别段定义并记录段名
-    if (line.includes('SEGMENT')) {
-      const parts = line.split(/\s+/);
-      if (parts.length >= 2 && parts[1] === 'SEGMENT') {
-        const segName = parts[0];
-        if (segName === 'DATA') segmentNames[segName] = DS_SEGMENT;
-        else if (segName === 'CODE') segmentNames[segName] = CS_SEGMENT;
-        else if (segName === 'STACK') segmentNames[segName] = SS_SEGMENT;
-        else segmentNames[segName] = DS_SEGMENT; // 默认使用数据段地址
+    // 支持任意段名，如 DATA1 SEGMENT
+    const segmentMatch = line.match(/^(\w+)\s+SEGMENT/i);
+    if (segmentMatch) {
+      const segName = segmentMatch[1];
+      
+      // 记录段地址映射
+      if (segName.includes('CODE')) segmentNames[segName] = CS_SEGMENT;
+      else if (segName.includes('STACK')) segmentNames[segName] = SS_SEGMENT;
+      else segmentNames[segName] = DS_SEGMENT; // 默认其他段为数据段
+
+      // 判断是否进入数据段处理模式
+      // 只要段名不包含 CODE，我们就认为它是数据段，允许定义数据
+      if (!segName.includes('CODE')) {
+          inDataSegment = true;
+          inCodeSegment = false;
+      } else {
+          inDataSegment = false;
+          inCodeSegment = true;
       }
+      continue;
     }
 
-    if (line.includes('DATA SEGMENT')) { inDataSegment = true; inCodeSegment = false; continue; }
-    if (line.includes('DATA ENDS')) { inDataSegment = false; continue; }
-    if (line.includes('CODE SEGMENT')) { inCodeSegment = true; inDataSegment = false; continue; }
-    if (line.includes('CODE ENDS')) { inCodeSegment = false; continue; }
+    if (line.endsWith('ENDS')) {
+        inDataSegment = false;
+        inCodeSegment = false;
+        continue;
+    }
     
     if (inDataSegment) {
       const parts = line.split(/\s+/);
@@ -153,8 +165,8 @@ export const parseCode = (code) => {
 
   const dataSize = currentMemIndex - DATA_SEGMENT_BASE;
 
-  // 将段名添加到 dataMap，使得 MOV AX, DATA 等指令可以正确获取段地址
-  Object.assign(dataMap, segmentNames);
+  // 不要将段名添加到 dataMap，而是单独返回，以免与变量混淆
+  // Object.assign(dataMap, segmentNames);
 
   // Pass 2: Code Generation & Label Collection
   inCodeSegment = false;
@@ -176,12 +188,17 @@ export const parseCode = (code) => {
     // 分离注释
     let line = rawLine.split(';')[0].trim().toUpperCase();
     
-    if (!line || line.includes('DATA SEGMENT') || line.includes('DATA ENDS') || line.includes('CODE SEGMENT') || line.includes('CODE ENDS') || line.includes('END START') || line.includes('ASSUME')) {
+    // 忽略段定义、结束标记、ASSUME等伪指令
+    if (!line || line.includes('SEGMENT') || line.endsWith('ENDS') || line.includes('END START') || line.includes('ASSUME')) {
       instructions.push({ type: 'EMPTY', originalIndex: i, raw: rawLine });
       continue;
     }
 
-    if (line.includes('DB') && !line.includes('MOV')) {
+    // 忽略数据定义（已经在 Pass 1 处理过）
+    // 注意：MOV AX, DB 这样的指令不应该被忽略，但 DB 定义应该被忽略
+    // 简单的检查：如果行以 DB/DW/DD 开头（前面可能有标签），或者是 "VAR DB ..." 格式
+    // 这里我们假设数据定义包含 DB/DW/DD 且不包含 MOV/ADD 等指令
+    if ((line.includes(' DB ') || line.includes(' DW ') || line.includes(' DD ')) && !line.includes('MOV')) {
         instructions.push({ type: 'EMPTY', originalIndex: i, raw: rawLine });
         continue;
     }
@@ -272,7 +289,7 @@ export const parseCode = (code) => {
     }
   }
 
-  return { newMemory, dataMap, labelMap, instructions, dataSize, instructionAddresses, instructionOffsets };
+  return { newMemory, dataMap, labelMap, instructions, dataSize, instructionAddresses, instructionOffsets, segmentNames };
 };
 
 // 生成伪机器码（用于内存视图显示）

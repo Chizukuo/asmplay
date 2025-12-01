@@ -776,6 +776,7 @@ export default function AssemblyVisualizer() {
                     watchVariables={watchVariables} 
                     symbolTable={symbolTable} 
                     memory={memory} 
+                    ds={registers.DS}
                     onRemove={removeWatchVariable}
                     onAdd={addWatchVariable}
                   />
