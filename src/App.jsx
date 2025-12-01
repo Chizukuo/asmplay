@@ -1,175 +1,16 @@
-import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
-import { Play, Pause, StepForward, RotateCcw, Cpu, Terminal, FileCode, Activity, Save, Plus, FolderOpen, Zap, Flag, Download, Upload, Circle, Eye, AlertCircle, List, Layout, Monitor, Layers, Sun, Moon } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Play, Pause, StepForward, RotateCcw, Cpu, Terminal, FileCode, Activity, Save, Plus, FolderOpen, Zap, Flag, Download, Upload, Circle, Eye, AlertCircle, List, Layout, Monitor as MonitorIcon, Layers, Sun, Moon } from 'lucide-react';
 import { PRESET_PROGRAMS, SCREEN_ROWS, SCREEN_COLS, SPEED_OPTIONS } from './constants';
 import { useAssembler } from './hooks/useAssembler';
 import RegisterCard from './components/RegisterCard';
 import MemoryView from './components/MemoryView';
 import WatchWindow from './components/WatchWindow';
 import CallStack from './components/CallStack';
+import AutoResizingContainer from './components/AutoResizingContainer';
+import Monitor from './components/Monitor';
+import ExamplesModal from './components/ExamplesModal';
+import { highlightLine } from './utils/highlightLine';
 
-// 自适应缩放容器
-const AutoResizingContainer = ({ children }) => {
-  const containerRef = useRef(null);
-  const contentRef = useRef(null);
-  const [scale, setScale] = useState(1);
-
-  useLayoutEffect(() => {
-    const handleResize = () => {
-      if (containerRef.current && contentRef.current) {
-        const container = containerRef.current;
-        const content = contentRef.current;
-        
-        // 获取容器尺寸
-        const cw = container.clientWidth;
-        const ch = container.clientHeight;
-        
-        // 获取内容原始尺寸 (临时重置 scale 以获取真实尺寸)
-        // 这里假设内容是固定大小或者 fit-content
-        const ow = content.scrollWidth;
-        const oh = content.scrollHeight;
-        
-        if (ow === 0 || oh === 0) return;
-
-        // 计算缩放比例，保留 5% 的边距
-        const scaleX = cw / ow;
-        const scaleY = ch / oh;
-        const newScale = Math.min(scaleX, scaleY) * 0.95;
-        
-        setScale(newScale);
-      }
-    };
-
-    const observer = new ResizeObserver(handleResize);
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-    
-    // 初始计算
-    handleResize();
-
-    return () => observer.disconnect();
-  }, [children]);
-
-  return (
-    <div ref={containerRef} className="w-full h-full flex items-center justify-center overflow-hidden relative">
-      <div 
-        ref={contentRef}
-        style={{ 
-          transform: `scale(${scale})`, 
-          transformOrigin: 'center center',
-          width: '100%',
-          maxWidth: '1024px', // Limit max width to prevent excessive stretching on large screens
-          height: 'auto'
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-};
-
-// 简单的语法高亮逻辑
-const highlightLine = (line) => {
-  const commentIndex = line.indexOf(';');
-  let codePart = line;
-  let commentPart = '';
-  if (commentIndex !== -1) {
-    codePart = line.slice(0, commentIndex);
-    commentPart = line.slice(commentIndex);
-  }
-
-  // 使用正则分割，保留分隔符
-  const tokens = codePart.split(/([,\s:\[\]+]+)/); 
-  
-  const highlightedTokens = tokens.map((token, i) => {
-    if (!token) return null;
-    const upper = token.toUpperCase();
-    let type = '';
-    
-    if (/^(MOV|ADD|SUB|MUL|DIV|INC|DEC|JMP|JZ|JNZ|LOOP|CMP|INT|PUSH|POP|CALL|RET|AND|OR|XOR|NOT|LEA|SHL|SHR|ROL|ROR|RCL|RCR|ADC|SBB|TEST|NEG|XCHG|NOP|HLT|CLI|STI|CLC|STC|CMC|CLD|STD|CBW|CWD|PUSHF|POPF|IRET|IN|OUT|LODS|STOS|MOVS|SCAS|CMPS|REP|REPE|REPNE|JE|JNE|JG|JGE|JL|JLE|JA|JAE|JB|JBE|JC|JNC|JO|JNO|JS|JNS|JP|JNP|JCXZ)$/.test(upper)) {
-      type = 'token-keyword';
-    } else if (/^(DB|DW|DD|DQ|DT|EQU|ORG|END|SEGMENT|ENDS|ASSUME|PROC|ENDP|MACRO|ENDM|PUBLIC|EXTRN|INCLUDE|TITLE|PAGE|OFFSET|PTR|BYTE|WORD|DWORD|NEAR|FAR|SHORT)$/.test(upper)) {
-      type = 'token-directive'; // 伪指令使用不同颜色
-    } else if (/^(AX|BX|CX|DX|SP|BP|SI|DI|AH|AL|BH|BL|CH|CL|DH|DL|CS|DS|SS|ES|IP|FLAGS)$/.test(upper)) {
-      type = 'token-register';
-    } else if (/^[0-9]+$/.test(token) || /^0x[0-9A-F]+$/i.test(token) || /^[0-9A-F]+H$/i.test(token)) {
-      type = 'token-number';
-    } else if (/^".*"$/.test(token) || /^'.*'$/.test(token)) {
-      type = 'token-string';
-    } else if (token.trim().length > 0 && !/^[,\s:\[\]+]+$/.test(token)) {
-        // 可能是标签或变量，简单处理
-        type = 'token-default'; 
-    }
-
-    return <span key={i} className={type}>{token}</span>;
-  });
-
-  return (
-    <>
-      {highlightedTokens}
-      {commentPart && <span className="token-comment">{commentPart}</span>}
-    </>
-  );
-};
-
-const MonitorCell = ({ cell, row, col, isCursorPosition, isWaitingInput }) => {
-  const [showCoord, setShowCoord] = useState(false);
-  
-  return (
-    <div 
-      className={`monitor-cell ${cell.style} ${cell.fg} ${isCursorPosition && isWaitingInput ? 'cursor-blink' : ''}`}
-      onMouseEnter={() => setShowCoord(true)}
-      onMouseLeave={() => setShowCoord(false)}
-    >
-      <span className={cell.blink ? 'text-blink' : ''}>
-        {cell.char}
-      </span>
-      {showCoord && (
-        <div className="monitor-cell-coord">
-          [{row}, {col}]
-        </div>
-      )}
-    </div>
-  );
-};
-
-// 示例程序选择器
-const ExamplesModal = ({ show, onClose, onSelect }) => {
-  if (!show) return null;
-  
-  const examples = [
-    { key: 'default', name: '综合演示', desc: '展示基础指令和屏幕控制', fileName: 'DEMO.ASM' },
-    { key: 'clock_demo', name: '时钟程序', desc: '日期时间显示与键盘检测', fileName: 'CLOCK.ASM' },
-    { key: 'loop_test', name: 'LOOP 测试', desc: '循环指令功能测试', fileName: 'LOOP.ASM' },
-    { key: 'bubble_sort', name: '冒泡排序', desc: '数组排序算法演示', fileName: 'SORT.ASM' },
-    { key: 'fibonacci', name: '斐波那契', desc: '递推数列计算', fileName: 'FIB.ASM' },
-    { key: 'string_demo', name: '字符串处理', desc: '字符串反转示例', fileName: 'STRING.ASM' },
-    { key: 'calculator', name: '简易计算器', desc: '四则运算演示', fileName: 'CALC.ASM' }
-  ];
-  
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <h2 className="modal-title">
-          <List size={24}/> 示例程序库
-        </h2>
-        <div className="modal-grid">
-          {examples.map(ex => (
-            <button
-              key={ex.key}
-              onClick={() => { onSelect(PRESET_PROGRAMS[ex.key], ex.fileName); onClose(); }}
-              className="example-card group"
-            >
-              <h3 className="example-title">{ex.name}</h3>
-              <p className="example-desc">{ex.desc}</p>
-            </button>
-          ))}
-        </div>
-        <button onClick={onClose} className="modal-close-btn">关闭</button>
-      </div>
-    </div>
-  );
-};
 
 export default function AssemblyVisualizer() {
   const {
@@ -177,7 +18,7 @@ export default function AssemblyVisualizer() {
     pc,
     registers,
     flags,
-    screenBuffer,
+    videoMemory,
     screenCols,
     cursor,
     isPlaying, setIsPlaying,
@@ -790,48 +631,12 @@ export default function AssemblyVisualizer() {
            {/* Bottom: Monitor */}
            <div className="flex-1 bg-gray-100 dark:bg-[#050505] p-3 sm:p-6 flex flex-col items-center justify-center relative overflow-hidden">
               <AutoResizingContainer>
-                {/* Monitor Bezel */}
-                <div className="monitor-bezel">
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-1 bg-gray-300 dark:bg-neutral-800 rounded-b-lg"></div>
-                    
-                    {/* Screen Container */}
-                    <div className="monitor-screen-container">
-                        {/* CRT Effects */}
-                        <div className="crt-overlay absolute inset-0 z-20 pointer-events-none"></div>
-                        <div className="crt-scanline"></div>
-                        
-                        {/* Screen Content */}
-                        <div 
-                          className="monitor-grid"
-                          style={{ 
-                              '--cols': screenCols || SCREEN_COLS,
-                              '--rows': SCREEN_ROWS
-                          }}
-                        >
-                            {screenBuffer.map((row, r) => 
-                              row.map((cell, c) => (
-                                <MonitorCell 
-                                  key={`${r}-${c}`}
-                                  cell={cell}
-                                  row={r}
-                                  col={c}
-                                  isCursorPosition={cursor.r === r && cursor.c === c}
-                                  isWaitingInput={isWaitingForInput}
-                                />
-                              ))
-                            )}
-                        </div>
-                    </div>
-                    
-                    {/* Monitor Branding */}
-                    <div className="mt-3 flex justify-between items-center px-2">
-                        <div className="flex gap-1.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-red-500/50 border border-red-400"></div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(250,204,21,1)] border border-yellow-400" style={{animation: 'glow-pulse 2s ease-in-out infinite'}}></div>
-                        </div>
-                        <span className="text-[9px] font-bold text-gray-500 dark:text-neutral-600 tracking-[0.2em]">SYNCMASTER 8086</span>
-                    </div>
-                </div>
+                <Monitor 
+                    videoMemory={videoMemory}
+                    cursor={cursor}
+                    isWaitingForInput={isWaitingForInput}
+                    screenCols={screenCols}
+                />
               </AutoResizingContainer>
            </div>
 
@@ -851,7 +656,7 @@ export default function AssemblyVisualizer() {
           onClick={() => setMobileTab('run')}
           className={`mobile-nav-btn ${mobileTab === 'run' ? 'active' : 'inactive'}`}
         >
-          <Monitor size={18} />
+          <MonitorIcon size={18} />
           <span className="text-[9px] font-medium">运行</span>
         </button>
       </div>

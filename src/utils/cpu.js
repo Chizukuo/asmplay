@@ -63,7 +63,7 @@ const updateFlags = (res, isSub, isWord, v1, v2, currentFlags) => {
 class CpuContext {
     constructor(registers, memory, symbolTable, segmentTable, labelMap, flags, callStack = []) {
         this.registers = { ...registers };
-        this.memory = [...memory]; // 注意：这里是浅拷贝，如果需要高性能可能需要优化
+        this.memory = memory; // Use reference for performance (Uint8Array)
         this.flags = { ...flags };
         this.callStack = [...callStack];
         this.symbolTable = symbolTable;

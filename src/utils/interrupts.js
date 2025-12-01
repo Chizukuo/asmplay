@@ -1,22 +1,20 @@
 import { SCREEN_ROWS, SCREEN_COLS } from '../constants';
 import { safeReadMemory } from './memoryUtils';
-import { getCharFromCode, printToConsole } from './displayUtils';
+import { getCharFromCode, printToConsole, writeCharToVideoMemory } from './displayUtils';
 
-export const handleDosInterrupt = (regs, currentMemory, currentCursor, currentBuffer, callbacks = {}) => {
+export const handleDosInterrupt = (regs, currentMemory, currentCursor, videoMemory, callbacks = {}) => {
   const ah = (regs.AX & 0xFF00) >> 8;
   const al = regs.AX & 0xFF;
   let newCursor = currentCursor;
-  let newBuffer = currentBuffer;
   let shouldStop = false;
   let newRegs = null;
   
   try {
     if (ah === 0x02) {
       // 输出单个字符到屏幕（DL = 字符）
-      const char = getCharFromCode(regs.DX & 0xFF);
-      const result = printToConsole(char, newCursor, newBuffer);
-      newBuffer = result.newBuffer;
-      newCursor = result.newCursor;
+      const charCode = regs.DX & 0xFF;
+      const result = printToConsole(charCode, newCursor, videoMemory);
+      newCursor = result;
     } else if (ah === 0x06) {
       // 直接控制台 I/O
       const dl = regs.DX & 0xFF;
@@ -24,10 +22,8 @@ export const handleDosInterrupt = (regs, currentMemory, currentCursor, currentBu
         // 输入：设置 ZF=1 表示无字符，这里简化处理
       } else {
         // 输出
-        const char = getCharFromCode(dl);
-        const result = printToConsole(char, newCursor, newBuffer);
-        newBuffer = result.newBuffer;
-        newCursor = result.newCursor;
+        const result = printToConsole(dl, newCursor, videoMemory);
+        newCursor = result;
       }
     } else if (ah === 0x09) {
       // 输出字符串（DS:DX = 字符串地址，$ 结束）
@@ -39,18 +35,16 @@ export const handleDosInterrupt = (regs, currentMemory, currentCursor, currentBu
         while (steps < 1000) {
           // 使用 DS:offset 读取字符
           const charCode = safeReadMemory(offset, 1, currentMemory, true, regs.DS);
-          const char = getCharFromCode(charCode);
-          if (char === '$') break;
-          output += char;
+          if (charCode === 0x24) break; // '$'
+          output += String.fromCharCode(charCode); // 暂存为字符串以便 printToConsole 处理换行等
           offset++;
           steps++;
         }
       } catch (err) {
         console.error(`INT 21H AH=09H 读取字符串错误: ${err.message}`);
       }
-      const result = printToConsole(output, newCursor, newBuffer);
-      newBuffer = result.newBuffer;
-      newCursor = result.newCursor;
+      const result = printToConsole(output, newCursor, videoMemory);
+      newCursor = result;
     } else if (ah === 0x2A) {
       // 获取系统日期：填充 CX=年, DH=月, DL=日
       const now = new Date();
@@ -87,14 +81,50 @@ export const handleDosInterrupt = (regs, currentMemory, currentCursor, currentBu
     console.error(`INT 21H 错误: ${err.message}`);
   }
   
-  return { newCursor, newBuffer, shouldStop, newRegs };
+  return { newCursor, shouldStop, newRegs };
 };
 
-export const handleBiosInterrupt = (regs, currentMemory, currentCursor, currentBuffer) => {
+export const handleTimeInterrupt = (regs) => {
+  const ah = (regs.AX & 0xFF00) >> 8;
+  let newRegs = { ...regs };
+  let newFlags = null;
+
+  try {
+    if (ah === 0x00) {
+      // GET SYSTEM TIME
+      // Returns: CX:DX = number of clock ticks since midnight
+      // AL = midnight flag (0 if not passed midnight, 1 if passed)
+      // 18.2065 ticks per second
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(0, 0, 0, 0);
+      const msSinceMidnight = now - midnight;
+      const ticks = Math.floor(msSinceMidnight * 18.2065 / 1000);
+      
+      newRegs.CX = (ticks >> 16) & 0xFFFF;
+      newRegs.DX = ticks & 0xFFFF;
+      newRegs.AX = (newRegs.AX & 0xFF00); // AL = 0 (simplified)
+    } else if (ah === 0x02) {
+      // GET REAL-TIME CLOCK TIME (BCD)
+      // Returns: CH = Hours (BCD), CL = Minutes (BCD), DH = Seconds (BCD)
+      const now = new Date();
+      const toBCD = (val) => ((Math.floor(val / 10) << 4) | (val % 10));
+      
+      newRegs.CX = (toBCD(now.getHours()) << 8) | toBCD(now.getMinutes());
+      newRegs.DX = (toBCD(now.getSeconds()) << 8) | (newRegs.DX & 0x00FF);
+      newFlags = { CF: 0 };
+    }
+  } catch (err) {
+    console.error(`INT 1A 错误: ${err.message}`);
+  }
+
+  return { newRegs, newFlags };
+};
+
+export const handleBiosInterrupt = (regs, currentMemory, currentCursor, videoMemory) => {
   const ah = (regs.AX & 0xFF00) >> 8;
   const al = regs.AX & 0xFF;
   let newCursor = currentCursor;
-  let newBuffer = currentBuffer;
   let newRegs = null;
   let newCols = null;
   
@@ -106,17 +136,13 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, currentB
       else if (al === 0x02 || al === 0x03) cols = 80;
       
       newCols = cols;
-      const rows = [];
-      for (let r = 0; r < SCREEN_ROWS; r++) {
-        const row = [];
-        for (let c = 0; c < cols; c++) {
-          row.push({ char: ' ', style: 'bg-black', fg: 'text-white', blink: '' });
-        }
-        rows.push(row);
+      // 清屏
+      for (let i = 0; i < videoMemory.length; i += 2) {
+        videoMemory[i] = 0x20;
+        videoMemory[i + 1] = 0x07;
       }
-      newBuffer = rows;
       newCursor = { r: 0, c: 0 };
-      return { newCursor, newBuffer, newRegs, newCols };
+      return { newCursor, newRegs, newCols };
     } else if (ah === 0x13) {
       // Write string to screen from ES:BP (注意：INT 10H AH=13H 使用 ES 而非 DS)
       // CX = 字符串长度，DH:DL = 行:列，BL = 属性
@@ -126,33 +152,19 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, currentB
       let col = regs.DX & 0x00FF;
       const bl = regs.BX & 0xFF;
 
-      // Attribute mapping
-      const colorMap = [
-        'black','blue-600','green-600','cyan-600','red-600','purple-600','yellow-700','gray-300',
-        'gray-600','blue-400','green-400','cyan-400','red-400','purple-400','yellow-400','white'
-      ];
-      const bgColor = (bl & 0x70) >> 4;
-      const fgColor = bl & 0x0F;
-      const blinkClass = (bl & 0x80) !== 0 ? 'text-blink' : '';
-      const bg = `bg-${colorMap[bgColor] || 'black'}`;
-      const fg = `text-${colorMap[fgColor] || 'white'}`;
-      
-      const currentCols = currentBuffer[0] ? currentBuffer[0].length : SCREEN_COLS;
-
       try {
         for (let i = 0; i < cx; i++) {
           // 使用 ES:BP 读取字符（INT 10H AH=13H 约定使用 ES 段）
           const charCode = safeReadMemory(bp + i, 1, currentMemory, true, regs.ES);
-          const ch = getCharFromCode(charCode);
+          
           if (row >= SCREEN_ROWS) break;
-          if (col >= currentCols) {
+          if (col >= SCREEN_COLS) {
             col = 0;
             row++;
             if (row >= SCREEN_ROWS) break;
           }
-          if (newBuffer[row] && newBuffer[row][col]) {
-              newBuffer[row][col] = { ...newBuffer[row][col], char: ch, style: bg, fg: fg, blink: blinkClass };
-          }
+          
+          writeCharToVideoMemory(videoMemory, row, col, charCode, bl);
           col++;
         }
       } catch (err) {
@@ -164,7 +176,7 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, currentB
            newCursor = { r: row, c: col };
       }
       
-      return { newCursor, newBuffer, newRegs };
+      return { newCursor, newRegs };
     }
     if (ah === 0x00) {
       // Fallback for other modes if not handled above (though handled above now)
@@ -174,62 +186,69 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, currentB
       // 设置光标位置
       const row = (regs.DX & 0xFF00) >> 8;
       const col = regs.DX & 0x00FF;
-      const currentCols = currentBuffer[0] ? currentBuffer[0].length : SCREEN_COLS;
-      if (row < SCREEN_ROWS && col < currentCols) {
+      if (row < SCREEN_ROWS && col < SCREEN_COLS) {
         newCursor = { r: row, c: col };
       } else {
         // 光标位置越界
       }
-    } else if (ah === 0x06) {
-      // 清屏或滚动窗口
+    } else if (ah === 0x06 || ah === 0x07) {
+      // AH=06H: Scroll Up, AH=07H: Scroll Down
+      // AL = Number of lines to scroll (0 = Clear)
+      // BH = Attribute for blank lines
+      // CX = Top-Left (CH:CL), DX = Bottom-Right (DH:DL)
       const al = regs.AX & 0x00FF;
+      const bh = (regs.BX & 0xFF00) >> 8;
+      const startRow = (regs.CX & 0xFF00) >> 8;
+      const startCol = regs.CX & 0x00FF;
+      const endRow = (regs.DX & 0xFF00) >> 8;
+      const endCol = regs.DX & 0x00FF;
+
       if (al === 0) {
-         const bh = (regs.BX & 0xFF00) >> 8;
-         
-         // 解析属性：Bit 7 为闪烁位
-         const blink = (bh & 0x80) !== 0;
-         // 背景色只取 Bit 6-4 (0-7)
-         const bgColor = (bh & 0x70) >> 4; 
-         const fgColor = bh & 0x0F; 
-         
-         // DOS颜色映射表
-         const colorMap = [
-           'black',      // 0x0: 黑色
-           'blue-600',   // 0x1: 蓝色
-           'green-600',  // 0x2: 绿色
-           'cyan-600',   // 0x3: 青色
-           'red-600',    // 0x4: 红色
-           'purple-600', // 0x5: 洋红色
-           'yellow-700', // 0x6: 棕色
-           'gray-300',   // 0x7: 浅灰色
-           'gray-600',   // 0x8: 深灰色
-           'blue-400',   // 0x9: 亮蓝色
-           'green-400',  // 0xA: 亮绿色
-           'cyan-400',   // 0xB: 亮青色
-           'red-400',    // 0xC: 亮红色
-           'purple-400', // 0xD: 亮洋红色
-           'yellow-400', // 0xE: 亮黄色
-           'white'       // 0xF: 亮白色
-         ];
-         
-         const bg = `bg-${colorMap[bgColor] || 'black'}`;
-         const fg = `text-${colorMap[fgColor] || 'white'}`;
-         const blinkClass = blink ? 'text-blink' : '';
-         
-         // CX = 左上角 (CH:CL = 行:列)
-         // DX = 右下角 (DH:DL = 行:列)
-         const startRow = (regs.CX & 0xFF00) >> 8;
-         const startCol = regs.CX & 0x00FF;
-         const endRow = (regs.DX & 0xFF00) >> 8;
-         const endCol = regs.DX & 0x00FF;
-         
+         // Clear window
          for (let r = startRow; r <= endRow && r < SCREEN_ROWS; r++) {
-           for (let c = startCol; c <= endCol && c < currentBuffer[0].length; c++) {
-             if (newBuffer[r] && newBuffer[r][c]) {
-               newBuffer[r][c] = { ...newBuffer[r][c], char: ' ', style: bg, fg: fg, blink: blinkClass };
-             }
+           for (let c = startCol; c <= endCol && c < SCREEN_COLS; c++) {
+             writeCharToVideoMemory(videoMemory, r, c, 0x20, bh);
            }
          }
+      } else {
+          // Scroll logic
+          const lines = al;
+          const width = endCol - startCol + 1;
+          const height = endRow - startRow + 1;
+          
+          if (ah === 0x06) { // Scroll Up
+              for (let r = startRow; r <= endRow; r++) {
+                  for (let c = startCol; c <= endCol; c++) {
+                      let srcRow = r + lines;
+                      let charCode = 0x20;
+                      let attr = bh;
+                      
+                      if (srcRow <= endRow) {
+                          // Copy from lower line
+                          const srcIdx = (srcRow * SCREEN_COLS + c) * 2;
+                          charCode = videoMemory[srcIdx];
+                          attr = videoMemory[srcIdx + 1];
+                      }
+                      writeCharToVideoMemory(videoMemory, r, c, charCode, attr);
+                  }
+              }
+          } else { // Scroll Down (AH=07H)
+              for (let r = endRow; r >= startRow; r--) {
+                  for (let c = startCol; c <= endCol; c++) {
+                      let srcRow = r - lines;
+                      let charCode = 0x20;
+                      let attr = bh;
+                      
+                      if (srcRow >= startRow) {
+                          // Copy from upper line
+                          const srcIdx = (srcRow * SCREEN_COLS + c) * 2;
+                          charCode = videoMemory[srcIdx];
+                          attr = videoMemory[srcIdx + 1];
+                      }
+                      writeCharToVideoMemory(videoMemory, r, c, charCode, attr);
+                  }
+              }
+          }
       }
     } else {
       // 未实现的功能
@@ -238,7 +257,7 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, currentB
     console.error(`INT 10H 错误: ${err.message}`);
   }
   
-  return { newCursor, newBuffer, newRegs, newCols };
+  return { newCursor, newRegs, newCols };
 };
 
 export const handleKeyboardInterrupt = (regs, keyBufferState) => {

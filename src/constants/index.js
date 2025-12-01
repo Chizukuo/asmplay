@@ -2,6 +2,27 @@ export const MEMORY_SIZE = 1024 * 1024; // 1MB
 export const INSTRUCTION_DELAY = 100;
 export const SCREEN_ROWS = 25;
 export const SCREEN_COLS = 80;
+export const VIDEO_MEMORY_SIZE = SCREEN_ROWS * SCREEN_COLS * 2; // 4000 bytes
+
+// DOS 16色调色板 (R, G, B)
+export const DOS_PALETTE = [
+  [0, 0, 0],       // 0: Black
+  [0, 0, 170],     // 1: Blue
+  [0, 170, 0],     // 2: Green
+  [0, 170, 170],   // 3: Cyan
+  [170, 0, 0],     // 4: Red
+  [170, 0, 170],   // 5: Magenta
+  [170, 85, 0],    // 6: Brown
+  [170, 170, 170], // 7: Light Gray
+  [85, 85, 85],    // 8: Dark Gray
+  [85, 85, 255],   // 9: Light Blue
+  [85, 255, 85],   // 10: Light Green
+  [85, 255, 255],  // 11: Light Cyan
+  [255, 85, 85],   // 12: Light Red
+  [255, 85, 255],  // 13: Light Magenta
+  [255, 255, 85],  // 14: Yellow
+  [255, 255, 255]  // 15: White
+];
 
 export const SPEED_OPTIONS = [
   { label: '极慢', value: 500 },
@@ -31,6 +52,8 @@ CODE SEGMENT
     MOV AH, 6
     MOV AL, 0
     MOV BH, 3FH
+    MOV CX, 0       ; 左上角 (0,0)
+    MOV DX, 184FH   ; 右下角 (24,79)
     INT 10H
     
     ; 2. 字符串输出
@@ -105,6 +128,8 @@ CODE SEGMENT
     MOV AH, 6
     MOV AL, 0
     MOV BH, 1FH
+    MOV CX, 0
+    MOV DX, 184FH
     INT 10H
     
     ; 显示排序前
@@ -170,6 +195,8 @@ CODE SEGMENT
     MOV AH, 6
     MOV AL, 0
     MOV BH, 2EH
+    MOV CX, 0
+    MOV DX, 184FH
     INT 10H
     
     ; 显示标题
@@ -246,6 +273,8 @@ CODE SEGMENT
     MOV AH, 6
     MOV AL, 0
     MOV BH, 5FH
+    MOV CX, 0
+    MOV DX, 184FH
     INT 10H
     
     ; 显示原字符串
@@ -323,6 +352,8 @@ CODE SEGMENT
     MOV AH, 6
     MOV AL, 0
     MOV BH, 60H
+    MOV CX, 0
+    MOV DX, 184FH
     INT 10H
     
     ; 显示标题
@@ -398,6 +429,8 @@ CODE SEGMENT
     MOV AH, 6
     MOV AL, 0
     MOV BH, 1FH
+    MOV CX, 0
+    MOV DX, 184FH
     INT 10H
     
     ; 显示标题

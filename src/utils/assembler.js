@@ -48,7 +48,7 @@ export const parseCode = (code) => {
   const DATA_SEGMENT_BASE = DS_SEGMENT << 4; // 0x04E00
   let currentMemIndex = DATA_SEGMENT_BASE;
   let currentDataOffset = 0; // 段内偏移量计数器
-  let newMemory = Array(MEMORY_SIZE).fill(0);
+  let newMemory = new Uint8Array(MEMORY_SIZE);
   let inDataSegment = false;
   let inCodeSegment = false;
   

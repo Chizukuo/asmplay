@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MEMORY_SIZE, INSTRUCTION_DELAY, SCREEN_ROWS, SCREEN_COLS, PRESET_PROGRAMS } from '../constants';
+import { MEMORY_SIZE, INSTRUCTION_DELAY, SCREEN_ROWS, SCREEN_COLS, PRESET_PROGRAMS, VIDEO_MEMORY_SIZE } from '../constants';
 import { parseCode } from '../utils/assembler';
 import { executeCpuInstruction } from '../utils/cpu';
-import { handleDosInterrupt, handleBiosInterrupt, handleKeyboardInterrupt } from '../utils/interrupts';
+import { handleDosInterrupt, handleBiosInterrupt, handleKeyboardInterrupt, handleTimeInterrupt } from '../utils/interrupts';
+import { clearVideoMemory, writeCharToVideoMemory } from '../utils/displayUtils';
 
 // CP437 to Unicode mapping for box drawing characters (0x80 - 0xFF)
 
@@ -24,11 +25,11 @@ export const useAssembler = () => {
     ZF: 0, SF: 0, CF: 0, OF: 0, PF: 0, 
     AF: 0, TF: 0, IF: 0, DF: 0 
   });
-  const [memory, setMemory] = useState(Array(MEMORY_SIZE).fill(0));
+  const [memory, setMemory] = useState(new Uint8Array(MEMORY_SIZE));
   const [symbolTable, setSymbolTable] = useState({});
   const [labelMap, setLabelMap] = useState({});
   const [instructionAddresses, setInstructionAddresses] = useState([]);
-  const [screenBuffer, setScreenBuffer] = useState([]);
+  const [videoMemory, setVideoMemory] = useState(new Uint8Array(VIDEO_MEMORY_SIZE));
   const [screenCols, setScreenCols] = useState(SCREEN_COLS);
   const [cursor, setCursor] = useState({ r: 0, c: 0 });
   const [speed, setSpeed] = useState(INSTRUCTION_DELAY);
@@ -54,26 +55,18 @@ export const useAssembler = () => {
     return () => clearTimeout(timer);
   }, [code]);
 
-  const resetScreen = useCallback((bgClass = 'bg-black', fgClass = 'text-yellow-400', blinkClass = '', cols = screenCols) => {
-    const rows = [];
-    for (let r = 0; r < SCREEN_ROWS; r++) {
-      const row = [];
-      for (let c = 0; c < cols; c++) {
-        row.push({ char: ' ', style: bgClass, fg: fgClass, blink: blinkClass });
-      }
-      rows.push(row);
-    }
-    setScreenBuffer(rows);
-    setCursor({ r: 0, c: 0 });
-  }, [screenCols]);
-
-  useEffect(() => {
-    resetScreen();
-  }, [resetScreen]);
-
+  // 初始化内存和显存
   useEffect(() => {
     const { newMemory, dataMap, labelMap: lMap, instructions, dataSize, instructionAddresses, instructionOffsets, segmentNames } = parseCode(code);
+    
+    // Initialize Video Memory in Main Memory
+    const VIDEO_MEMORY_START = 0xB8000;
+    const videoRam = newMemory.subarray(VIDEO_MEMORY_START, VIDEO_MEMORY_START + VIDEO_MEMORY_SIZE);
+    clearVideoMemory(videoRam, 0x07);
+    
     setMemory(newMemory);
+    setVideoMemory(new Uint8Array(videoRam));
+    
     setSymbolTable(dataMap);
     setLabelMap(lMap);
     setParsedInstructions(instructions);
@@ -99,10 +92,13 @@ export const useAssembler = () => {
 
     let currentPc = pc;
     let newRegisters = { ...registers };
-    let newMemory = [...memory];
+    let newMemory = new Uint8Array(memory);
     let newFlags = { ...flags };
     let newCursor = { ...cursor };
-    let newBuffer = screenBuffer.map(row => [...row]);
+    // Map video memory to physical memory 0xB8000
+    const VIDEO_MEMORY_START = 0xB8000;
+    let videoRamView = newMemory.subarray(VIDEO_MEMORY_START, VIDEO_MEMORY_START + VIDEO_MEMORY_SIZE);
+    
     let newCallStack = [...callStack];
     let interruptOccurred = false;
 
@@ -157,9 +153,8 @@ export const useAssembler = () => {
                             throw new Error("__BREAK__");
                         }
                     } else {
-                        const dosResult = handleDosInterrupt(newRegisters, newMemory, newCursor, newBuffer, { setIsPlaying });
+                        const dosResult = handleDosInterrupt(newRegisters, newMemory, newCursor, videoRamView, { setIsPlaying });
                         newCursor = dosResult.newCursor;
-                        newBuffer = dosResult.newBuffer;
                         if (dosResult.newRegs) newRegisters = dosResult.newRegs;
                         if (dosResult.shouldStop) {
                             if (isLightSpeed) clearInterval(intervalRef.current);
@@ -168,9 +163,8 @@ export const useAssembler = () => {
                     }
                 }
                 else if (val1 === '10H') {
-                    const biosResult = handleBiosInterrupt(newRegisters, newMemory, newCursor, newBuffer);
+                    const biosResult = handleBiosInterrupt(newRegisters, newMemory, newCursor, videoRamView);
                     newCursor = biosResult.newCursor;
-                    newBuffer = biosResult.newBuffer;
                     if (biosResult.newRegs) newRegisters = biosResult.newRegs;
                     if (biosResult.newCols) setScreenCols(biosResult.newCols);
                 }
@@ -183,6 +177,14 @@ export const useAssembler = () => {
                     }
                     if (kbResult.shouldConsume) {
                         setKeyBuffer(prev => prev.slice(1));
+                    }
+                }
+                else if (val1 === '1AH') {
+                    // 时钟中断
+                    const timeResult = handleTimeInterrupt(newRegisters);
+                    if (timeResult.newRegs) newRegisters = timeResult.newRegs;
+                    if (timeResult.newFlags) {
+                        Object.assign(newFlags, timeResult.newFlags);
                     }
                 }
                 interruptOccurred = true;
@@ -232,11 +234,11 @@ export const useAssembler = () => {
     setMemory(newMemory);
     setFlags(newFlags);
     setPc(currentPc);
-    setScreenBuffer(newBuffer);
+    setVideoMemory(new Uint8Array(videoRamView));
     setCursor(newCursor);
     setCallStack(newCallStack);
 
-  }, [pc, parsedInstructions, registers, memory, flags, cursor, screenBuffer, symbolTable, labelMap, segmentTable, speed, isWaitingForInput, isPlaying, callStack, keyBuffer, breakpoints]);
+  }, [pc, parsedInstructions, registers, memory, flags, cursor, videoMemory, symbolTable, labelMap, segmentTable, speed, isWaitingForInput, isPlaying, callStack, keyBuffer, breakpoints]);
 
   const reload = useCallback((newCode) => {
     setCode(newCode);
@@ -244,7 +246,15 @@ export const useAssembler = () => {
 
     // 强制重新解析以重置内存（即使代码未变）
     const { newMemory, dataMap, labelMap: lMap, instructions, instructionAddresses: iAddrs, segmentNames } = parseCode(newCode);
+    
+    // Initialize Video Memory in Main Memory
+    const VIDEO_MEMORY_START = 0xB8000;
+    const videoRam = newMemory.subarray(VIDEO_MEMORY_START, VIDEO_MEMORY_START + VIDEO_MEMORY_SIZE);
+    clearVideoMemory(videoRam, 0x07);
+    
     setMemory(newMemory);
+    setVideoMemory(new Uint8Array(videoRam));
+    
     setSymbolTable(dataMap);
     setLabelMap(lMap);
     setParsedInstructions(instructions);
@@ -259,7 +269,7 @@ export const useAssembler = () => {
     });
     setFlags({ ZF: 0, SF: 0, CF: 0, OF: 0, PF: 0, AF: 0, TF: 0, IF: 1, DF: 0 });
     setScreenCols(SCREEN_COLS); // Reset to default 80 columns
-    resetScreen('bg-black', 'text-yellow-400', '', SCREEN_COLS);
+    setCursor({ r: 0, c: 0 });
     setCallStack([]);
     setIsPlaying(false);
     setError(null);
@@ -267,7 +277,7 @@ export const useAssembler = () => {
     setKeyBuffer([]);
     setLastKeyPressed(null);
     setIsWaitingForInput(false);
-  }, [resetScreen]);
+  }, []);
 
   const handleInput = useCallback((char) => {
       if (isWaitingForInput) {
@@ -286,18 +296,17 @@ export const useAssembler = () => {
                   return { ...prev, AX: newAX };
               });
               
-              // 回显到屏幕（使用当前屏幕的样式）
-              setScreenBuffer(prevBuffer => {
-                  const newBuffer = prevBuffer.map(row => [...row]);
-                  const { r, c } = cursor;
-                  if (r < SCREEN_ROWS && c < screenCols) {
-                      newBuffer[r][c] = { 
-                          ...newBuffer[r][c], 
-                          char: upperChar 
-                      };
-                  }
-                  return newBuffer;
-              });
+              // 回显到屏幕并同步到主内存
+              const newMemory = new Uint8Array(memory);
+              const VIDEO_MEMORY_START = 0xB8000;
+              const videoRam = newMemory.subarray(VIDEO_MEMORY_START, VIDEO_MEMORY_START + VIDEO_MEMORY_SIZE);
+              
+              const { r, c } = cursor;
+              // 默认属性 0x07 (白字黑底)
+              writeCharToVideoMemory(videoRam, r, c, charCode, 0x07);
+              
+              setMemory(newMemory);
+              setVideoMemory(new Uint8Array(videoRam));
               
               // 移动光标
               setCursor(prev => {
@@ -315,7 +324,7 @@ export const useAssembler = () => {
               setIsPlaying(true);
           }
       }
-  }, [isWaitingForInput, cursor, screenCols]);
+  }, [isWaitingForInput, cursor, screenCols, memory]);
 
   // 模拟按键事件（供外部调用）
   const simulateKeyPress = useCallback((char) => {
@@ -368,7 +377,7 @@ export const useAssembler = () => {
     flags,
     memory,
     symbolTable,
-    screenBuffer,
+    videoMemory,
     screenCols,
     cursor,
     isPlaying, setIsPlaying,
