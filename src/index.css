@@ -9,21 +9,64 @@
   
   body {
     margin: 0;
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    @apply bg-gray-50 text-gray-900 dark:bg-[#050505] dark:text-[#e5e5e5];
+    transition: background-color 0.3s, color 0.3s;
+  }
+
+  /* 白天模式背景 */
+  body:not(.dark) {
+    background-image: 
+      radial-gradient(circle at 50% 0%, #f3f4f6 0%, transparent 70%),
+      radial-gradient(circle at 80% 10%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
+  }
+
+  /* 暗黑模式背景 */
+  .dark body {
+    background-image: 
+      radial-gradient(circle at 50% 0%, #1a1a1a 0%, transparent 70%),
+      radial-gradient(circle at 80% 10%, rgba(234, 179, 8, 0.05) 0%, transparent 50%);
     background-attachment: fixed;
   }
 }
 
-/* ===== 响应式断点 ===== */
-/* 移除旧的字体大小调整，现在使用 transform scale */
+/* ===== 响应式断点与缩放优化 ===== */
 @media (max-width: 480px) {
   .glass-effect {
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  /* 小屏适配：整体缩放并增加内边距，避免溢出 */
+  .app-container {
+    padding: 0.5rem;
+  }
+
+  .monitor-bezel {
+    transform: scale(0.85);
+    transform-origin: center top;
+  }
+
+  .editor-header-bar,
+  .editor-toolbar {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
   }
 }
 
-/* 安全区域适配 (iPhone X等) */
+@media (max-width: 768px) {
+  /* 竖屏设备上，顶部区域稍微压缩高度，提高可视区域 */
+  .app-header {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .monitor-grid {
+    font-size: 12px;
+    padding: 8px;
+  }
+}
+
+/* 安全区域适配 */
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -35,81 +78,53 @@
 }
 
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 5px rgba(250, 204, 21, 0.2), 0 0 10px rgba(250, 204, 21, 0.1); }
-  50% { box-shadow: 0 0 20px rgba(250, 204, 21, 0.4), 0 0 30px rgba(250, 204, 21, 0.2), 0 0 40px rgba(250, 204, 21, 0.1); }
+  0%, 100% { box-shadow: 0 0 5px rgba(234, 179, 8, 0.1), 0 0 10px rgba(234, 179, 8, 0.05); }
+  50% { box-shadow: 0 0 15px rgba(234, 179, 8, 0.2), 0 0 20px rgba(234, 179, 8, 0.1); }
 }
 
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-5px); }
-}
-
-@keyframes shimmer {
-  0% { background-position: -1000px 0; }
-  100% { background-position: 1000px 0; }
+  50% { transform: translateY(-3px); }
 }
 
 @keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
 .crt-overlay {
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
   background-size: 100% 2px, 3px 100%;
   pointer-events: none;
 }
+
 .crt-scanline {
   width: 100%;
   height: 100px;
   z-index: 10;
-  background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(255, 255, 255, 0.1) 50%, rgba(0,0,0,0) 100%);
+  background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(0,0,0,0) 100%);
   opacity: 0.1;
   position: absolute;
   bottom: 100%;
-  animation: scanline 10s linear infinite;
+  animation: scanline 8s linear infinite;
   pointer-events: none;
 }
+
 /* ===== 自定义滚动条 ===== */
 .custom-scrollbar::-webkit-scrollbar { 
-  width: 10px; 
-  height: 10px; 
+  width: 6px; 
+  height: 6px; 
 }
 .custom-scrollbar::-webkit-scrollbar-track { 
-  background: #0a0a0a;
-  border-radius: 5px;
+  background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb { 
-  background: linear-gradient(180deg, #facc15 0%, #eab308 100%);
-  border-radius: 5px;
-  border: 2px solid #0a0a0a;
-  cursor: grab;
+  @apply bg-gray-300 dark:bg-[#333];
+  border-radius: 3px;
   transition: all 0.2s ease;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { 
-  background: linear-gradient(180deg, #eab308 0%, #ca8a04 100%);
-  transform: scale(1.05);
-  box-shadow: 0 0 10px rgba(250, 204, 21, 0.5);
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:active { 
-  cursor: grabbing;
-  transform: scale(0.95);
+  @apply bg-gray-400 dark:bg-[#444];
 }
 
 /* 编辑区使用文本光标 */
@@ -117,18 +132,17 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
 
 /* 发光效果 */
 .glow-text { 
-  text-shadow: 0 0 10px rgba(250, 204, 21, 0.6), 0 0 20px rgba(250, 204, 21, 0.3); 
+  text-shadow: 0 0 10px rgba(234, 179, 8, 0.4); 
 }
 
 .glow-border {
-  box-shadow: 0 0 15px rgba(250, 204, 21, 0.3);
-  animation: glow-pulse 3s ease-in-out infinite;
+  box-shadow: 0 0 15px rgba(234, 179, 8, 0.15);
 }
 
 /* Monitor Grid */
 .monitor-grid {
   display: grid;
-  font-family: monospace;
+  font-family: 'Consolas', 'Monaco', monospace;
   line-height: 1;
   user-select: none;
   position: relative;
@@ -136,10 +150,11 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
   font-size: 14px;
   width: fit-content;
   max-width: 100%;
-  padding: 8px;
+  padding: 12px;
   grid-template-columns: repeat(var(--cols), 0.9ch);
   grid-template-rows: repeat(var(--rows), 1.2em);
   gap: 0;
+  background-color: #000;
 }
 
 .monitor-cell {
@@ -147,181 +162,109 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.1s;
 }
 
 .monitor-cell:hover {
-  outline: 2px solid rgba(250, 204, 21, 0.8);
+  background-color: rgba(234, 179, 8, 0.2);
   z-index: 30;
-  background-color: rgba(250, 204, 21, 0.15);
-  transform: scale(1.1);
-  box-shadow: 0 0 15px rgba(250, 204, 21, 0.4);
 }
 
 .monitor-cell-coord {
   position: absolute;
-  background: rgba(0, 0, 0, 0.95);
-  color: #facc15;
+  background: rgba(20, 20, 20, 0.95);
+  color: #fbbf24;
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: 4px;
   white-space: nowrap;
   pointer-events: none;
   z-index: 40;
-  border: 1px solid rgba(250, 204, 21, 0.6);
+  border: 1px solid rgba(234, 179, 8, 0.3);
   font-family: monospace;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.9), 0 0 15px rgba(250, 204, 21, 0.3);
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
   margin-bottom: 4px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
 }
 
 /* 文字闪烁动画 */
 @keyframes text-blink {
   0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0.2; }
+  50%, 100% { opacity: 0.3; }
 }
 
 .text-blink {
   animation: text-blink 1s infinite;
 }
 
-.execution-highlight {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 1.5rem;
-  background: linear-gradient(90deg, rgba(250, 204, 21, 0.25) 0%, rgba(234, 179, 8, 0.1) 100%);
-  border-left: 3px solid rgb(250, 204, 21);
-  box-shadow: 0 0 20px rgba(250, 204, 21, 0.3), inset 0 0 20px rgba(250, 204, 21, 0.1);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  animation: glow-pulse 2s ease-in-out infinite;
+/* 光标闪烁动画 - DOS风格 */
+@keyframes cursor-blink {
+  0%, 49% { 
+    background-color: currentColor;
+  }
+  50%, 100% { 
+    background-color: transparent;
+  }
 }
 
-/* 代码行执行高亮 - 与行绑定 */
+.cursor-blink {
+  animation: cursor-blink 0.8s infinite;
+  position: relative;
+}
+
+.cursor-blink::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: inherit;
+  animation: cursor-blink 0.8s infinite;
+}
+
+/* 代码行执行高亮 */
 .code-line-executing {
-  background: linear-gradient(90deg, rgba(250, 204, 21, 0.25) 0%, rgba(234, 179, 8, 0.1) 100%) !important;
-  border-left: 3px solid rgb(250, 204, 21) !important;
-  box-shadow: 0 0 20px rgba(250, 204, 21, 0.3), inset 0 0 20px rgba(250, 204, 21, 0.1);
-  animation: glow-pulse 2s ease-in-out infinite;
-  margin-left: -3px;
-  padding-left: 3px;
+  @apply bg-blue-100/50 dark:bg-yellow-500/15 border-l-2 border-blue-500 dark:border-yellow-500 !important;
+  margin-left: -2px;
+  padding-left: 2px;
 }
 
 /* ===== 语法高亮 ===== */
-.token-comment { 
-  color: #71717a; 
-  font-style: italic; 
-  opacity: 0.7;
-}
-.token-keyword { 
-  color: #facc15; 
-  font-weight: 600;
-  text-shadow: 0 0 5px rgba(250, 204, 21, 0.3);
-}
-.token-register { 
-  color: #10b981; 
-  font-weight: 500;
-}
-.token-number { 
-  color: #a78bfa; 
-  font-weight: 500;
-}
-.token-string { 
-  color: #fde047; 
-}
-.token-directive { 
-  color: #f472b6; 
-  font-weight: 500;
-}
-.token-label { 
-  color: #fb923c; 
-  font-weight: 500;
-}
+.token-comment { @apply text-gray-500 dark:text-zinc-500 italic; }
+.token-keyword { @apply text-blue-700 dark:text-[#fbbf24] font-semibold; }
+.token-register { @apply text-purple-700 dark:text-[#34d399]; }
+.token-number { @apply text-emerald-600 dark:text-[#a78bfa]; }
+.token-string { @apply text-amber-600 dark:text-[#fde047]; }
+.token-directive { @apply text-pink-600 dark:text-[#f472b6]; }
+.token-default { @apply text-gray-800 dark:text-neutral-300; }
 
 /* ===== 工具类 ===== */
 .glass-effect {
-  background: rgba(17, 17, 17, 0.7);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  @apply bg-white/80 dark:bg-[#141414]/60 backdrop-blur-md border border-gray-200 dark:border-white/5;
 }
 
 .card-hover {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
 }
 
 .card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 20px rgba(250, 204, 21, 0.1);
+  transform: translateY(-1px);
+  @apply border-blue-400/30 dark:border-yellow-500/30;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #facc15 0%, #eab308 100%);
-  transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
+  @apply bg-blue-600 dark:bg-[#fbbf24] text-white dark:text-black transition-all;
 }
-
-.btn-primary::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
-  transform: translate(-50%, -50%);
-  transition: width 0.6s, height 0.6s;
+.btn-primary:hover {
+  @apply bg-blue-700 dark:bg-[#f59e0b];
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
 }
-
-.btn-primary:hover::before {
-  width: 300px;
-  height: 300px;
-}
-
 .btn-primary:active {
-  transform: scale(0.95);
-}
-
-.editor-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 0.875rem;
-  line-height: 1.5rem;
-}
-
-.editor-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  padding: 1rem 0.75rem; /* p-4 pl-3 */
-  margin: 0;
-  border: 0;
-  background: transparent;
-  white-space: pre;
-  overflow: auto;
-  box-sizing: border-box;
-  tab-size: 4;
-}
-
-.editor-textarea {
-  color: transparent;
-  caret-color: white;
-  z-index: 10;
-  resize: none;
-  outline: none;
-}
-
-.editor-highlight {
-  color: #d4d4d4;
-  pointer-events: none;
-  z-index: 5;
+  transform: translateY(0);
 }
 
 /* ===== 组件样式提取 ===== */
@@ -329,125 +272,117 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
 @layer components {
   /* 布局容器 */
   .app-container {
-    @apply h-screen bg-gradient-to-br from-[#0a0a0a] via-[#0f0f0f] to-[#1a1a1a] text-neutral-200 font-sans flex flex-col overflow-hidden selection:bg-yellow-900 selection:text-yellow-100;
+    @apply h-screen bg-gray-50 dark:bg-[#050505] text-gray-900 dark:text-neutral-200 font-sans flex flex-col overflow-hidden selection:bg-blue-200 dark:selection:bg-yellow-500/30 selection:text-blue-900 dark:selection:text-yellow-100 transition-colors duration-300;
   }
 
   .app-header {
-    @apply glass-effect border-b border-neutral-800/50 p-3 sm:p-4 flex flex-col sm:flex-row flex-wrap justify-between items-center shrink-0 z-20 backdrop-blur-xl shadow-lg gap-3;
+    @apply glass-effect px-4 py-3 flex justify-between items-center shrink-0 z-20 relative;
   }
 
   /* 头部按钮通用样式 */
   .header-btn {
-    @apply flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-neutral-800 to-neutral-900 hover:from-neutral-700 hover:to-neutral-800 border border-neutral-700 rounded-lg text-[10px] sm:text-xs font-medium transition-all duration-300 shadow-md hover:shadow-xl card-hover;
+    @apply flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-neutral-900/50 hover:bg-gray-100 dark:hover:bg-neutral-800 border border-gray-200 dark:border-neutral-800 hover:border-gray-300 dark:hover:border-neutral-700 rounded-md text-xs font-medium transition-all text-gray-600 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-neutral-200 shadow-sm dark:shadow-none;
   }
   
-  .header-btn-purple { @apply hover:border-purple-500/50 hover:shadow-purple-500/20; }
-  .header-btn-red { @apply hover:border-red-500/50 hover:shadow-red-500/20; }
-  .header-btn-yellow { @apply hover:border-yellow-500/50 hover:shadow-yellow-500/20; }
-  .header-btn-orange { @apply hover:border-orange-500/50 hover:shadow-orange-500/20; }
-  .header-btn-blue { @apply hover:border-blue-500/50 hover:shadow-blue-500/20; }
+  .header-btn-purple { @apply hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-500/30; }
+  .header-btn-red { @apply hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-500/30; }
+  .header-btn-yellow { @apply hover:text-yellow-600 dark:hover:text-yellow-400 hover:border-yellow-200 dark:hover:border-yellow-500/30; }
+  .header-btn-orange { @apply hover:text-orange-600 dark:hover:text-orange-400 hover:border-orange-200 dark:hover:border-orange-500/30; }
+  .header-btn-blue { @apply hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-500/30; }
 
   /* 面板布局 */
   .panel-left {
-    @apply w-full lg:w-5/12 flex flex-col border-b lg:border-b-0 lg:border-r border-neutral-800/50 bg-gradient-to-br from-[#0d0d0d] to-[#111] shadow-2xl transition-all duration-300;
+    @apply w-full lg:w-5/12 flex flex-col border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a];
   }
 
   .panel-right {
-    @apply w-full lg:w-7/12 flex flex-col bg-gradient-to-br from-[#050505] to-[#0a0a0a] transition-all duration-300;
+    @apply w-full lg:w-7/12 flex flex-col bg-gray-50 dark:bg-[#050505];
   }
 
   /* 编辑器相关 */
   .editor-header-bar {
-    @apply px-4 py-3 glass-effect text-xs font-semibold text-neutral-300 border-b border-neutral-800/50 flex justify-between items-center backdrop-blur-sm;
+    @apply px-4 py-2 bg-gray-50 dark:bg-[#0a0a0a] text-xs font-medium text-gray-500 dark:text-neutral-400 border-b border-gray-200 dark:border-neutral-800 flex justify-between items-center;
   }
 
   .editor-status-badge {
-    @apply px-3 py-1 rounded-full text-[10px] font-bold tracking-wider transition-all duration-300;
+    @apply px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase;
   }
   .editor-status-badge.active {
-    @apply bg-gradient-to-r from-yellow-900/50 to-yellow-800/30 text-yellow-300 animate-pulse border border-yellow-600/50 shadow-lg shadow-yellow-500/20;
+    @apply text-blue-600 dark:text-yellow-500 bg-blue-50 dark:bg-yellow-500/10 border border-blue-200 dark:border-yellow-500/20;
   }
   .editor-status-badge.idle {
-    @apply bg-neutral-800/80 text-neutral-400 border border-neutral-700;
+    @apply text-gray-500 dark:text-neutral-500 bg-gray-100 dark:bg-neutral-800/50 border border-gray-200 dark:border-neutral-800;
   }
 
   .line-numbers-col {
-    @apply w-12 bg-[#0a0a0a] text-yellow-600/50 text-right pr-3 py-4 text-sm font-mono leading-6 select-none border-r border-neutral-800 z-10 overflow-hidden;
+    @apply w-10 bg-gray-50 dark:bg-[#0a0a0a] text-gray-400 dark:text-neutral-700 text-right pr-2 py-4 text-sm font-mono leading-6 select-none border-r border-gray-200 dark:border-neutral-800/50 z-10 overflow-hidden;
   }
 
   .editor-toolbar {
-    @apply p-3 sm:p-4 glass-effect border-t border-neutral-800/50 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center backdrop-blur-sm;
+    @apply p-2 bg-gray-50 dark:bg-[#0a0a0a] border-t border-gray-200 dark:border-neutral-800 flex gap-2 items-center justify-between;
   }
 
   .toolbar-btn {
-    @apply p-2.5 rounded-lg bg-gradient-to-br from-neutral-800 to-neutral-900 hover:from-neutral-700 hover:to-neutral-800 text-neutral-300 border border-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300 card-hover;
+    @apply p-2 rounded-md bg-white dark:bg-neutral-900 hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-neutral-200 border border-gray-200 dark:border-neutral-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm dark:shadow-none;
   }
-  .toolbar-btn-blue { @apply hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/20; }
-  .toolbar-btn-green { @apply hover:border-green-500/50 hover:shadow-lg hover:shadow-green-500/20; }
+  .toolbar-btn-blue { @apply hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-500/30; }
+  .toolbar-btn-green { @apply hover:text-green-600 dark:hover:text-green-400 hover:border-green-200 dark:hover:border-green-500/30; }
 
   .play-btn {
-    @apply flex items-center gap-2 px-5 sm:px-6 py-2.5 rounded-lg font-semibold text-sm transition-all duration-300 shadow-lg transform hover:scale-105 active:scale-95 flex-1 sm:flex-none justify-center;
+    @apply flex items-center gap-2 px-4 py-2 rounded-md font-semibold text-sm transition-all shadow-sm;
   }
-  .play-btn.playing { @apply bg-gradient-to-r from-red-900 to-red-800 hover:from-red-800 hover:to-red-700 text-red-100 shadow-red-900/50; }
-  .play-btn.idle { @apply btn-primary text-black shadow-yellow-900/50; }
-
-  /* 寄存器卡片 */
-  .register-card {
-    @apply bg-[#111] p-2 rounded border border-neutral-800 flex flex-col items-center min-w-[60px];
-  }
-  .register-name { @apply text-[10px] font-bold text-neutral-500 mb-1; }
-  .register-val { @apply font-mono text-sm text-yellow-400 tracking-wider; }
+  .play-btn.playing { @apply bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-500 border border-red-200 dark:border-red-500/20 hover:bg-red-100 dark:hover:bg-red-500/20; }
+  .play-btn.idle { @apply bg-blue-600 dark:bg-yellow-500 text-white dark:text-black hover:bg-blue-700 dark:hover:bg-yellow-400 border border-blue-600 dark:border-yellow-500; }
 
   /* 内存视图 */
   .memory-view-container { @apply flex flex-col h-full font-mono text-[10px]; }
-  .memory-nav-btn { @apply px-1.5 py-0.5 bg-neutral-800 rounded hover:bg-neutral-700 text-neutral-400 text-xs; }
-  .memory-addr-input { @apply bg-neutral-900 border border-neutral-700 w-16 pl-5 pr-1 py-0.5 text-center rounded focus:border-yellow-500 outline-none text-yellow-400 text-[10px]; }
-  .memory-grid { @apply flex-1 overflow-auto custom-scrollbar bg-[#080808] p-1.5 rounded border border-neutral-800; }
-  .memory-row { @apply flex hover:bg-white/5 text-[10px]; }
+  .memory-nav-btn { @apply px-1.5 py-0.5 bg-gray-100 dark:bg-neutral-800 rounded hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-600 dark:text-neutral-400 text-xs border border-gray-200 dark:border-transparent; }
+  .memory-addr-input { @apply bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 w-16 pl-5 pr-1 py-0.5 text-center rounded focus:border-blue-500 dark:focus:border-yellow-500 outline-none text-blue-600 dark:text-yellow-400 text-[10px]; }
+  .memory-grid { @apply flex-1 overflow-auto custom-scrollbar bg-white dark:bg-[#080808] p-1.5 rounded border border-gray-200 dark:border-neutral-800; }
+  .memory-row { @apply flex hover:bg-gray-100 dark:hover:bg-white/5 text-[10px] text-gray-600 dark:text-gray-400; }
 
   /* 变量监视 */
-  .watch-input { @apply flex-1 bg-neutral-900 border border-neutral-700 px-2 py-1 rounded text-xs text-neutral-200 focus:border-yellow-500 outline-none; }
-  .watch-add-btn { @apply px-3 py-1 bg-yellow-600 hover:bg-yellow-500 text-black rounded text-xs font-bold transition-colors; }
-  .watch-item { @apply glass-effect p-2 rounded border border-neutral-800 flex justify-between items-center; }
+  .watch-input { @apply flex-1 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 px-2 py-1 rounded text-xs text-gray-900 dark:text-neutral-200 focus:border-blue-500 dark:focus:border-yellow-500 outline-none; }
+  .watch-add-btn { @apply px-3 py-1 bg-blue-600 dark:bg-yellow-600 hover:bg-blue-700 dark:hover:bg-yellow-500 text-white dark:text-black rounded text-xs font-bold transition-colors; }
+  .watch-item { @apply glass-effect p-2 rounded border border-gray-200 dark:border-neutral-800 flex justify-between items-center; }
 
   /* 模态框 */
-  .modal-overlay { @apply fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm; }
-  .modal-content { @apply glass-effect max-w-2xl w-full rounded-2xl border border-neutral-700 p-6 shadow-2xl; }
-  .example-card { @apply glass-effect p-4 rounded-lg border border-neutral-700 hover:border-yellow-500/50 text-left transition-all duration-300 card-hover; }
+  .modal-overlay { @apply fixed inset-0 z-50 bg-black/20 dark:bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm; }
+  .modal-content { @apply bg-white dark:bg-[#111] max-w-2xl w-full rounded-xl border border-gray-200 dark:border-neutral-800 p-6 shadow-2xl; }
+  .example-card { @apply bg-gray-50 dark:bg-neutral-900/50 p-4 rounded-lg border border-gray-200 dark:border-neutral-800 hover:border-blue-400 dark:hover:border-yellow-500/30 text-left transition-all hover:bg-white dark:hover:bg-neutral-800 shadow-sm dark:shadow-none; }
 
   /* 移动端控件 */
-  .mobile-nav-bar { @apply lg:hidden shrink-0 bg-[#0a0a0a] border-t border-neutral-800 flex justify-around items-center pb-safe z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]; }
+  .mobile-nav-bar { @apply lg:hidden shrink-0 bg-white dark:bg-[#0a0a0a] border-t border-gray-200 dark:border-neutral-800 flex justify-around items-center pb-safe z-50; }
   .mobile-nav-btn { @apply flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors; }
-  .mobile-nav-btn.active { @apply text-yellow-400 bg-white/5; }
-  .mobile-nav-btn.inactive { @apply text-neutral-500 hover:text-neutral-300; }
+  .mobile-nav-btn.active { @apply text-blue-600 dark:text-yellow-500; }
+  .mobile-nav-btn.inactive { @apply text-gray-500 dark:text-neutral-600 hover:text-gray-700 dark:hover:text-neutral-400; }
 
-  .mobile-control-panel { @apply lg:hidden shrink-0 bg-[#111] border-b border-neutral-800 p-3 flex flex-col gap-2 shadow-lg z-20; }
+  .mobile-control-panel { @apply lg:hidden shrink-0 bg-gray-50 dark:bg-[#0a0a0a] border-b border-gray-200 dark:border-neutral-800 p-3 flex flex-col gap-2 z-20; }
   
   /* 监视器 */
-  .monitor-bezel { @apply relative bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800 p-4 sm:p-5 rounded-2xl shadow-2xl border-2 border-neutral-600; }
-  .monitor-screen-container { @apply relative bg-black border-4 border-[#1a1a1a] rounded-lg overflow-hidden shadow-[inset_0_0_30px_rgba(0,0,0,1)] glow-border; }
+  .monitor-bezel { @apply relative bg-gray-200 dark:bg-[#1a1a1a] p-4 rounded-xl shadow-2xl border border-gray-300 dark:border-neutral-800; }
+  .monitor-screen-container { @apply relative bg-black rounded border border-gray-400 dark:border-neutral-800 overflow-hidden shadow-inner; }
 
   /* Logo & Header Elements */
   .logo-container {
-    @apply bg-gradient-to-br from-yellow-900/30 to-yellow-900/10 p-2.5 sm:p-3 rounded-xl border border-yellow-900/50 shadow-lg;
-    animation: float 3s ease-in-out infinite;
+    @apply bg-blue-50 dark:bg-yellow-500/10 p-2 rounded-lg border border-blue-100 dark:border-yellow-500/20;
   }
 
   .app-title {
-    @apply font-bold text-lg sm:text-xl text-neutral-100 tracking-tight flex items-center gap-2;
+    @apply font-bold text-lg text-gray-900 dark:text-neutral-100 tracking-tight flex items-center gap-2;
   }
 
   .app-badge {
-    @apply text-yellow-500 text-[10px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full bg-gradient-to-r from-yellow-900/30 to-yellow-800/20 border border-yellow-700/50 shadow-inner;
+    @apply text-blue-600 dark:text-yellow-500 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-yellow-500/10 border border-blue-100 dark:border-yellow-500/20;
   }
 
   .app-subtitle {
-    @apply text-[10px] sm:text-xs text-neutral-400 font-medium;
+    @apply text-[10px] text-gray-500 dark:text-neutral-500 font-medium;
   }
 
   /* Editor Area Details */
   .editor-area {
-    @apply flex-1 relative overflow-hidden bg-[#0d0d0d];
+    @apply flex-1 relative overflow-hidden bg-white dark:bg-[#0a0a0a];
   }
 
   .editor-highlight-layer {
@@ -455,53 +390,42 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
   }
 
   .editor-textarea {
-    @apply absolute inset-0 w-full h-full bg-transparent pl-3 p-4 text-sm leading-6 outline-none resize-none text-transparent caret-white font-mono whitespace-pre z-10 custom-scrollbar;
+    @apply absolute inset-0 w-full h-full bg-transparent pl-3 p-4 text-sm leading-6 outline-none resize-none text-transparent caret-blue-600 dark:caret-yellow-500 font-mono whitespace-pre z-10 custom-scrollbar;
   }
 
   .breakpoint-gutter-item {
-    @apply h-6 flex items-center justify-end gap-1 cursor-pointer hover:bg-white/5 transition-colors relative;
+    @apply h-6 flex items-center justify-end gap-1 cursor-pointer hover:text-gray-600 dark:hover:text-neutral-400 transition-colors relative;
   }
 
   /* Speed Control */
   .speed-control-panel {
-    @apply glass-effect bg-gradient-to-br from-neutral-900/80 to-neutral-800/60 px-3 py-2 rounded-lg border border-neutral-700/50 hover:border-yellow-500/50 transition-all duration-300 shadow-md hover:shadow-lg hover:shadow-yellow-500/10;
+    @apply flex items-center gap-2 bg-white dark:bg-neutral-900/50 px-2 py-1 rounded-md border border-gray-200 dark:border-neutral-800;
   }
 
   .speed-btn {
-    @apply px-2.5 py-1 rounded text-xs font-semibold transition-all duration-200 bg-neutral-800/80 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 border border-neutral-700/50;
+    @apply px-2 py-0.5 rounded text-[10px] font-medium transition-all text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300;
   }
 
   .speed-btn.active {
-    @apply bg-gradient-to-r from-yellow-500 to-yellow-600 text-black shadow-lg shadow-yellow-500/30 scale-105 border-transparent;
+    @apply bg-gray-100 dark:bg-neutral-800 text-blue-600 dark:text-yellow-500 shadow-sm;
   }
-
-  /* Log Panel styles removed */
 
   /* View Mode Toggles */
   .view-mode-btn {
-    @apply text-[10px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all duration-300 text-neutral-500 hover:text-neutral-300 bg-neutral-900/50 border border-neutral-800 hover:border-neutral-700;
+    @apply text-[10px] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800;
   }
 
   .view-mode-btn.active {
-    @apply text-yellow-400 bg-yellow-900/20 border-yellow-700/50 shadow-lg shadow-yellow-500/20;
+    @apply text-blue-600 dark:text-yellow-500 bg-blue-50 dark:bg-yellow-500/10;
   }
 
   .ip-badge {
-    @apply text-[10px] sm:text-xs font-mono font-semibold text-yellow-400 bg-yellow-900/20 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-yellow-700/50;
-  }
-
-  /* Flags */
-  .flag-badge {
-    @apply px-3 py-2 rounded-lg text-xs font-mono font-semibold border transition-all duration-300 bg-neutral-900/50 border-neutral-800 text-neutral-600;
-  }
-
-  .flag-badge.active {
-    @apply bg-gradient-to-br from-yellow-900/40 to-yellow-800/20 border-yellow-600 text-yellow-300 shadow-md shadow-yellow-500/20;
+    @apply text-[10px] font-mono font-bold text-blue-600 dark:text-yellow-500 bg-blue-50 dark:bg-yellow-500/10 px-2 py-1 rounded border border-blue-100 dark:border-yellow-500/20;
   }
 
   /* Modal & Examples */
   .modal-title {
-    @apply text-2xl font-bold text-yellow-400 mb-4 flex items-center gap-2;
+    @apply text-xl font-bold text-gray-900 dark:text-neutral-100 mb-4 flex items-center gap-2;
   }
 
   .modal-grid {
@@ -509,20 +433,28 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
   }
 
   .example-title {
-    @apply font-bold text-lg text-neutral-200 group-hover:text-yellow-400 mb-1;
+    @apply font-bold text-sm text-gray-800 dark:text-neutral-200 mb-0.5;
+  }
+
+  /* group-hover replacement for example-title */
+  .example-card.group:hover .example-title {
+    @apply text-blue-600;
+  }
+  .dark .example-card.group:hover .example-title {
+    @apply text-yellow-500;
   }
 
   .example-desc {
-    @apply text-sm text-neutral-400;
+    @apply text-xs text-gray-500 dark:text-neutral-500;
   }
 
   .modal-close-btn {
-    @apply mt-4 w-full btn-primary text-black font-bold py-2 rounded-lg;
+    @apply mt-4 w-full bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-700 dark:text-neutral-300 font-medium py-2 rounded-lg transition-colors;
   }
 
   /* Watch Window Details */
   .watch-header {
-    @apply text-xs font-bold text-yellow-400 mb-2 flex items-center gap-2 uppercase tracking-wider;
+    @apply text-xs font-bold text-blue-600 dark:text-yellow-500 mb-2 flex items-center gap-2 uppercase tracking-wider;
   }
 
   .watch-input-container {
@@ -530,7 +462,7 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
   }
 
   .watch-empty-state {
-    @apply text-neutral-600 italic text-xs text-center py-4;
+    @apply text-gray-400 dark:text-neutral-600 italic text-xs text-center py-4;
   }
 
   .watch-list {
@@ -538,67 +470,66 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
   }
 
   .watch-var-name {
-    @apply text-xs font-mono text-yellow-300;
+    @apply text-xs font-mono text-blue-600 dark:text-yellow-400;
   }
 
   .watch-var-addr {
-    @apply text-[10px] text-neutral-500;
+    @apply text-[10px] text-gray-400 dark:text-neutral-500;
   }
 
   .watch-var-val {
-    @apply text-sm font-mono text-green-400;
+    @apply text-sm font-mono text-green-600 dark:text-green-400;
   }
 
   .watch-remove-btn {
-    @apply text-red-400 hover:text-red-300 transition-colors;
+    @apply text-gray-400 dark:text-neutral-600 hover:text-red-500 dark:hover:text-red-400 transition-colors;
   }
 
   /* Input Overlay */
   .input-overlay {
-    @apply absolute inset-0 z-50 bg-black/90 flex items-center justify-center backdrop-blur-md p-4;
-    animation: fade-in-up 0.3s ease-out;
+    @apply absolute inset-0 z-50 bg-white/80 dark:bg-black/80 flex items-center justify-center backdrop-blur-sm p-4;
+    animation: fade-in-up 0.2s ease-out;
   }
 
   .input-modal {
-    @apply glass-effect p-6 sm:p-10 rounded-2xl border-2 border-yellow-500/40 shadow-[0_0_80px_rgba(250,204,21,0.25)] text-center max-w-lg w-full mx-4;
-    animation: float 3s ease-in-out infinite;
+    @apply bg-white dark:bg-[#111] p-8 rounded-2xl border border-gray-200 dark:border-neutral-800 shadow-2xl text-center max-w-md w-full mx-4;
   }
 
   .input-icon-container {
-    @apply w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-yellow-900/40 to-yellow-800/20 rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-6 border-2 border-yellow-500/30 shadow-lg shadow-yellow-500/20;
+    @apply w-12 h-12 bg-blue-50 dark:bg-yellow-500/10 rounded-xl flex items-center justify-center mx-auto mb-4 text-blue-600 dark:text-yellow-500;
   }
 
   .input-title {
-    @apply text-yellow-400 font-bold text-xl sm:text-2xl mb-2 sm:mb-3 tracking-tight glow-text;
+    @apply text-gray-900 dark:text-neutral-100 font-bold text-xl mb-2;
   }
 
   .input-desc {
-    @apply text-neutral-300 text-xs sm:text-sm mb-6 sm:mb-8 leading-relaxed;
+    @apply text-gray-500 dark:text-neutral-400 text-sm mb-6;
   }
 
   .input-code-badge {
-    @apply bg-neutral-800/80 px-2 py-1 rounded text-yellow-300 font-mono text-[10px] sm:text-xs border border-yellow-700/30;
+    @apply bg-gray-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded text-blue-600 dark:text-yellow-500 font-mono text-xs;
   }
 
   .input-field {
-    @apply bg-black border-3 border-yellow-700 text-yellow-300 text-center text-3xl sm:text-4xl font-mono w-16 h-16 sm:w-20 sm:h-20 rounded-xl focus:outline-none focus:border-yellow-500 focus:shadow-[0_0_30px_rgba(250,204,21,0.5)] transition-all duration-300 uppercase shadow-inner glow-border mx-auto block;
+    @apply bg-gray-50 dark:bg-black border-2 border-gray-300 dark:border-neutral-700 text-blue-600 dark:text-yellow-500 text-center text-3xl font-mono w-16 h-16 rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-yellow-500 transition-all uppercase mx-auto block;
   }
 
   .input-hint {
-    @apply mt-3 sm:mt-5 text-[10px] sm:text-xs text-neutral-500 uppercase tracking-widest font-semibold;
+    @apply mt-4 text-xs text-gray-400 dark:text-neutral-600 uppercase tracking-widest font-medium;
   }
 
   /* Error Toast */
   .error-toast-container {
-    @apply absolute top-20 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-full mx-4;
+    @apply absolute top-20 left-1/2 -translate-x-1/2 z-40 max-w-xl w-full mx-4;
   }
 
   .error-toast {
-    @apply glass-effect bg-red-900/80 border-2 border-red-500 rounded-lg p-4 shadow-2xl shadow-red-500/50 flex items-start gap-3;
+    @apply bg-red-50 dark:bg-red-950/90 border border-red-200 dark:border-red-500/30 backdrop-blur-md rounded-lg p-4 shadow-xl flex items-start gap-3;
   }
 
   .error-icon {
-    @apply text-red-300 flex-shrink-0 mt-1;
+    @apply text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5;
   }
 
   .error-content {
@@ -606,14 +537,239 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
   }
 
   .error-title {
-    @apply font-bold text-red-100 mb-1;
+    @apply font-bold text-red-800 dark:text-red-200 text-sm mb-1;
   }
 
   .error-message {
-    @apply text-sm text-red-200 font-mono whitespace-pre-wrap;
+    @apply text-xs text-red-600 dark:text-red-300 font-mono whitespace-pre-wrap;
   }
 
   .error-close-btn {
-    @apply text-red-300 hover:text-red-100 transition-colors;
+    @apply text-red-400 hover:text-red-600 dark:hover:text-red-200 transition-colors;
+  }
+
+  /* ===== Call Stack Component ===== */
+  .call-stack-container {
+    @apply flex flex-col h-full bg-white dark:bg-[#0a0a0a] rounded-lg border border-gray-200 dark:border-neutral-800 overflow-hidden;
+  }
+  
+  .call-stack-header {
+    @apply flex items-center gap-2 p-2 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-900/50 text-gray-500 dark:text-neutral-400 font-bold text-xs;
+  }
+
+  .call-stack-list {
+    @apply flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar;
+  }
+
+  .call-stack-empty {
+    @apply flex flex-col items-center justify-center h-full text-gray-400 dark:text-neutral-700 gap-2;
+  }
+
+  .call-stack-item {
+    @apply bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded p-2 flex items-center justify-between hover:border-blue-300 dark:hover:border-yellow-500/30 transition-colors;
+  }
+
+  .call-stack-index {
+    @apply w-4 h-4 rounded bg-gray-200 dark:bg-neutral-800 flex items-center justify-center text-[9px] text-gray-500 dark:text-neutral-500 font-mono;
+  }
+
+  .call-stack-func-name {
+    @apply text-blue-600 dark:text-yellow-500 font-bold text-xs font-mono;
+  }
+
+  .call-stack-ret {
+    @apply text-[9px] text-gray-400 dark:text-neutral-500;
+  }
+
+  .call-stack-sp {
+    @apply text-[9px] font-mono text-gray-500 dark:text-neutral-500 bg-white dark:bg-black/40 px-1.5 py-0.5 rounded border border-gray-200 dark:border-neutral-800;
+  }
+
+  /* ===== Register Card Component ===== */
+  .register-card {
+    @apply relative overflow-hidden rounded-lg border transition-all duration-200;
+  }
+  
+  .register-card.active {
+    @apply bg-blue-50 dark:bg-yellow-500/10 border-blue-200 dark:border-yellow-500/40 shadow-[0_0_15px_rgba(59,130,246,0.1)] dark:shadow-[0_0_15px_rgba(234,179,8,0.1)];
+  }
+  
+  .register-card.inactive {
+    @apply bg-white dark:bg-neutral-900/40 border-gray-200 dark:border-neutral-800 hover:border-gray-300 dark:hover:border-neutral-700;
+  }
+
+  .register-card-name {
+    @apply text-[10px] font-bold tracking-wider;
+  }
+  
+  .register-card-name.active {
+    @apply text-blue-600 dark:text-yellow-400;
+  }
+  
+  .register-card-name.inactive {
+    @apply text-gray-500 dark:text-neutral-500;
+  }
+
+  .register-card-value {
+    @apply font-mono text-xl font-bold tracking-tight transition-all;
+  }
+  
+  .register-card-value.active {
+    @apply text-blue-800 dark:text-yellow-100;
+  }
+  
+  .register-card-value.inactive {
+    @apply text-gray-700 dark:text-neutral-300;
+  }
+
+  /* ===== Memory View Component ===== */
+  .memory-container {
+    @apply flex flex-col h-full bg-white dark:bg-[#0a0a0a] rounded-lg border border-gray-200 dark:border-neutral-800 overflow-hidden font-mono;
+  }
+
+  .memory-toolbar {
+    @apply flex flex-wrap gap-2 p-2 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-900/50 items-center justify-between shrink-0;
+  }
+
+  .memory-addr-group {
+    @apply flex items-center bg-white dark:bg-neutral-900 rounded px-2 py-1 border border-gray-200 dark:border-neutral-800 w-28 focus-within:border-blue-400 dark:focus-within:border-yellow-500/50 transition-colors;
+  }
+
+  .memory-input {
+    @apply bg-transparent border-none outline-none text-blue-600 dark:text-yellow-500 font-mono text-[10px] w-full placeholder-gray-400 dark:placeholder-neutral-700 text-center;
+  }
+
+  .memory-grid-area {
+    @apply flex-1 overflow-hidden p-2 font-mono text-[11px] bg-white dark:bg-[#050505] text-gray-500 dark:text-neutral-400 selection:bg-blue-100 dark:selection:bg-yellow-900/30 selection:text-blue-900 dark:selection:text-yellow-100;
+  }
+
+  .memory-row-item {
+    @apply flex hover:bg-gray-50 dark:hover:bg-neutral-900/50 transition-colors leading-relaxed h-[22px] items-center;
+  }
+
+  .memory-addr-label {
+    @apply w-24 text-gray-400 dark:text-neutral-600 shrink-0 select-all cursor-text transition-colors;
+  }
+
+  .memory-ascii-col {
+    @apply w-32 text-gray-400 dark:text-neutral-600 tracking-widest border-l border-gray-200 dark:border-neutral-800 pl-3 font-sans opacity-60 transition-opacity;
+  }
+
+  /* group-hover replacements for memory row */
+  .memory-row-item.group:hover .memory-addr-label {
+    @apply text-gray-600;
+  }
+  .dark .memory-row-item.group:hover .memory-addr-label {
+    @apply text-neutral-500;
+  }
+
+  .memory-row-item.group:hover .memory-ascii-col {
+    @apply opacity-100 text-gray-600;
+  }
+  .dark .memory-row-item.group:hover .memory-ascii-col {
+    @apply opacity-100 text-neutral-400;
+  }
+
+  /* ===== Watch Window Component ===== */
+  .watch-window-container {
+    @apply flex flex-col h-full bg-white dark:bg-[#0a0a0a] rounded-lg border border-gray-200 dark:border-neutral-800 overflow-hidden;
+  }
+
+  .watch-window-header {
+    @apply flex items-center justify-between p-2 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-900/50;
+  }
+
+  .watch-window-title {
+    @apply flex items-center gap-2 text-gray-500 dark:text-neutral-400 font-bold text-xs;
+  }
+
+  .watch-add-toggle {
+    @apply p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors;
+  }
+  
+  .watch-add-toggle.active {
+    @apply text-blue-600 dark:text-yellow-500 bg-gray-200 dark:bg-neutral-800;
+  }
+  
+  .watch-add-toggle.inactive {
+    @apply text-gray-400 dark:text-neutral-500;
+  }
+
+  .watch-add-panel {
+    @apply p-2 bg-gray-50 dark:bg-neutral-900/30 border-b border-gray-200 dark:border-neutral-800 flex gap-2;
+  }
+
+  .watch-add-input {
+    @apply flex-1 bg-white dark:bg-black border border-gray-300 dark:border-neutral-800 rounded px-2 py-1 text-xs text-blue-600 dark:text-yellow-500 outline-none focus:border-blue-400 dark:focus:border-yellow-500/50;
+  }
+
+  .watch-add-confirm {
+    @apply px-3 py-1 bg-blue-600 dark:bg-yellow-600 hover:bg-blue-700 dark:hover:bg-yellow-500 text-white dark:text-black rounded text-xs font-bold transition-colors;
+  }
+
+  .watch-list-container {
+    @apply flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar;
+  }
+
+  .watch-list-item {
+    @apply bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded p-2 flex items-center justify-between hover:border-blue-300 dark:hover:border-yellow-500/30 transition-colors;
+  }
+
+  /* ===== App Layout Components ===== */
+  .registers-panel {
+    @apply h-[40%] lg:h-[45%] border-b border-gray-200 dark:border-neutral-800 p-3 sm:p-4 flex flex-col gap-3 overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-[#050505];
+  }
+
+  .view-mode-toolbar {
+    @apply flex flex-wrap items-center justify-between mb-1 gap-2 sticky top-0 z-10 bg-gray-50/95 dark:bg-[#050505]/95 p-2 -mx-2 rounded-lg border border-gray-200/50 dark:border-neutral-800/50 backdrop-blur-md shadow-sm;
+  }
+
+  .section-title {
+    @apply text-[10px] font-bold text-gray-500 dark:text-neutral-500 uppercase tracking-widest mb-2 pl-1 flex items-center gap-2;
+  }
+
+  .section-dot-blue {
+    @apply w-1 h-1 rounded-full bg-blue-600 dark:bg-yellow-500;
+  }
+  
+  .section-dot-purple {
+    @apply w-1 h-1 rounded-full bg-purple-600 dark:bg-blue-500;
+  }
+  
+  .section-dot-green {
+    @apply w-1 h-1 rounded-full bg-green-600 dark:bg-green-500;
+  }
+
+  /* Mobile Controls */
+  .mobile-status-indicator {
+    @apply w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-yellow-500 animate-pulse;
+  }
+
+  .mobile-status-text {
+    @apply text-[10px] font-bold text-gray-500 dark:text-neutral-500 uppercase tracking-wider;
+  }
+
+  .mobile-instruction-display {
+    @apply bg-white dark:bg-black/60 rounded-lg p-2.5 border border-gray-200 dark:border-neutral-800 font-mono text-xs overflow-x-auto whitespace-pre min-h-[38px] flex items-center shadow-inner;
+  }
+
+  .mobile-btn-play {
+    @apply flex-1 flex items-center justify-center gap-2 py-2 rounded-lg font-semibold text-xs transition-all;
+  }
+  
+  .mobile-btn-play.active {
+    @apply bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50;
+  }
+  
+  .mobile-btn-play.inactive {
+    @apply bg-blue-600 dark:bg-yellow-600 text-white dark:text-black shadow-lg shadow-blue-900/20 dark:shadow-yellow-900/20;
+  }
+
+  .mobile-btn-secondary {
+    @apply flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-white dark:bg-neutral-800 text-gray-600 dark:text-neutral-300 border border-gray-200 dark:border-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed active:bg-gray-100 dark:active:bg-neutral-700;
+  }
+  
+  .mobile-btn-icon {
+    @apply px-3 py-2 rounded-lg bg-white dark:bg-neutral-800 text-gray-600 dark:text-neutral-300 border border-gray-200 dark:border-neutral-700 active:bg-gray-100 dark:active:bg-neutral-700;
   }
 }

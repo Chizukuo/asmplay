@@ -4,6 +4,7 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class', // 启用手动切换暗黑模式
   safelist: [
     // 背景色
     'bg-black', 'bg-blue-600', 'bg-blue-400', 'bg-green-600', 'bg-green-400',
