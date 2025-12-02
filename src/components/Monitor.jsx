@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { SCREEN_ROWS, SCREEN_COLS, DOS_PALETTE } from '../constants';
-import { CP437_MAP } from '../utils/displayUtils';
+import { getCharFromCode } from '../utils/displayUtils';
 
 const CHAR_WIDTH = 9;  // 字符宽
 const CHAR_HEIGHT = 16; // 字符高
@@ -26,24 +26,6 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
     document.head.appendChild(link);
     return () => document.head.removeChild(link);
   }, []);
-  
-  // CP437 字符映射辅助函数
-  const getDisplayChar = (charCode) => {
-    // 使用 CP437 映射表获取正确的字符
-    if (CP437_MAP[charCode]) {
-      return CP437_MAP[charCode];
-    }
-    // 基本 ASCII (32-126)
-    if (charCode >= 32 && charCode <= 126) {
-      return String.fromCharCode(charCode);
-    }
-    // 控制字符显示为空格
-    if (charCode < 32) {
-      return ' ';
-    }
-    // 其他字符使用 Unicode
-    return String.fromCharCode(charCode);
-  };
 
   const render = (time) => {
     const canvas = canvasRef.current;
@@ -75,7 +57,7 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
             const attr = videoMemory[offset + 1];
 
             // 使用 CP437 字符映射
-            const char = getDisplayChar(charCode);
+            const char = getCharFromCode(charCode);
             
             // 解析属性
             const isBlink = (attr & 0x80) !== 0;
