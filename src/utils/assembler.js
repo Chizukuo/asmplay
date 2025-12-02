@@ -101,42 +101,66 @@ export const parseCode = (code) => {
           // Extract the value part: everything after the type
           let valueStr = line.substring(line.indexOf(type) + type.length).trim();
           
-          // Handle DUP (e.g., 10 DUP(0))
-          let count = 1;
           let values = [];
           
-          if (valueStr.includes('DUP')) {
-             const dupParts = valueStr.split('DUP');
-             count = parseInt(dupParts[0].trim());
-             let valContent = dupParts[1].trim();
-             // Remove parens ( )
-             if (valContent.startsWith('(') && valContent.endsWith(')')) {
-                 valContent = valContent.slice(1, -1);
-             }
-             // Check if string or number
-             if (valContent.startsWith("'") && valContent.endsWith("'")) {
-                 const str = valContent.slice(1, -1);
-                 for(let c=0; c<count; c++) values.push(...str.split('').map(x => x.charCodeAt(0)));
-             } else {
-                 const num = valContent === '?' ? 0 : (valContent.endsWith('H') ? parseInt(valContent.slice(0, -1), 16) : parseInt(valContent));
-                 for(let c=0; c<count; c++) values.push(num);
-             }
-          } else {
-              const rawStrMatch = line.match(/'([^']*)'/);
-              if (rawStrMatch) {
-                  const str = rawStrMatch[1];
-                  for (let k = 0; k < str.length; k++) {
-                      values.push(str.charCodeAt(k));
-                  }
+          // Helper to parse a single value item (number, string, or ?)
+          const parseItem = (item) => {
+              item = item.trim();
+              if (item === '?') return [0];
+              if (item.startsWith("'") && item.endsWith("'")) {
+                  const str = item.slice(1, -1);
+                  return str.split('').map(x => x.charCodeAt(0));
+              }
+              const num = item.endsWith('H') ? parseInt(item.slice(0, -1), 16) : parseInt(item);
+              return isNaN(num) ? [0] : [num];
+          };
+
+          // Smart split by comma, ignoring commas inside quotes or parentheses
+          let valueParts = [];
+          let currentPart = '';
+          let inQuote = false;
+          let parenDepth = 0;
+          
+          for (let k = 0; k < valueStr.length; k++) {
+              const char = valueStr[k];
+              if (char === "'" && !inQuote) inQuote = true;
+              else if (char === "'" && inQuote) inQuote = false;
+              else if (char === '(' && !inQuote) parenDepth++;
+              else if (char === ')' && !inQuote) parenDepth--;
+              
+              if (char === ',' && !inQuote && parenDepth === 0) {
+                  valueParts.push(currentPart.trim());
+                  currentPart = '';
               } else {
-                  const valParts = valueStr.split(',');
-                  valParts.forEach(v => {
-                      v = v.trim();
-                      const num = v.endsWith('H') ? parseInt(v.slice(0, -1), 16) : parseInt(v);
-                      if (!isNaN(num)) values.push(num);
-                  });
+                  currentPart += char;
               }
           }
+          if (currentPart.trim()) valueParts.push(currentPart.trim());
+
+          // Process each part
+          valueParts.forEach(part => {
+              if (part.includes('DUP')) {
+                  // Handle DUP: count DUP (val)
+                  const dupIdx = part.indexOf('DUP');
+                  const countStr = part.substring(0, dupIdx).trim();
+                  let valContent = part.substring(dupIdx + 3).trim();
+                  
+                  const count = parseInt(countStr);
+                  if (isNaN(count)) return;
+
+                  // Remove outer parens if present
+                  if (valContent.startsWith('(') && valContent.endsWith(')')) {
+                      valContent = valContent.slice(1, -1);
+                  }
+                  
+                  const itemValues = parseItem(valContent);
+                  for (let c = 0; c < count; c++) {
+                      values.push(...itemValues);
+                  }
+              } else {
+                  values.push(...parseItem(part));
+              }
+          });
 
           // Write to memory
           values.forEach(val => {

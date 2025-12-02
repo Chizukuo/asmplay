@@ -101,10 +101,12 @@ export const useAssembler = () => {
     
     let newCallStack = [...callStack];
     let interruptOccurred = false;
+    let localKeyBuffer = [...keyBuffer];
 
     // 光速模式：运行到程序结束
     const isLightSpeed = (speed === 0 && isPlaying);
-    const BATCH_SIZE = isLightSpeed ? 100000 : 1;
+    // Optimize: Increase batch size for normal speeds too to handle loops better
+    const BATCH_SIZE = isLightSpeed ? 100000 : (speed < 10 ? 500 : 10);
 
     for (let step = 0; step < BATCH_SIZE; step++) {
         while (currentPc < parsedInstructions.length && parsedInstructions[currentPc].type === 'EMPTY') {
@@ -145,15 +147,35 @@ export const useAssembler = () => {
                 if (val1 === '21H') {
                     const ah = (newRegisters.AX & 0xFF00) >> 8;
                     if (ah === 0x01 || ah === 0x0A) {
-                        setIsWaitingForInput(true);
-                        setIsPlaying(false);
-                        interruptOccurred = true;
-                        if (isLightSpeed) {
-                            clearInterval(intervalRef.current);
-                            throw new Error("__BREAK__");
+                        // Check if we have keys in buffer first
+                        if (localKeyBuffer.length > 0) {
+                            const key = localKeyBuffer.shift();
+                            setKeyBuffer(prev => prev.slice(1));
+                            
+                            // Set AL = char
+                            newRegisters.AX = (newRegisters.AX & 0xFF00) | (key.ascii & 0xFF);
+                            
+                            // Echo to screen
+                            writeCharToVideoMemory(videoRamView, newCursor.r, newCursor.c, key.ascii, 0x07);
+                            
+                            // Move cursor
+                            newCursor.c++;
+                            if (newCursor.c >= screenCols) {
+                                newCursor.c = 0;
+                                newCursor.r++;
+                                if (newCursor.r >= SCREEN_ROWS) newCursor.r = 0;
+                            }
+                        } else {
+                            setIsWaitingForInput(true);
+                            setIsPlaying(false);
+                            interruptOccurred = true;
+                            if (isLightSpeed) {
+                                clearInterval(intervalRef.current);
+                                throw new Error("__BREAK__");
+                            }
                         }
                     } else {
-                        const dosResult = handleDosInterrupt(newRegisters, newMemory, newCursor, videoRamView, { setIsPlaying });
+                        const dosResult = handleDosInterrupt(newRegisters, newMemory, newCursor, videoRamView, { setIsPlaying }, screenCols);
                         newCursor = dosResult.newCursor;
                         if (dosResult.newRegs) newRegisters = dosResult.newRegs;
                         if (dosResult.shouldStop) {
@@ -163,19 +185,20 @@ export const useAssembler = () => {
                     }
                 }
                 else if (val1 === '10H') {
-                    const biosResult = handleBiosInterrupt(newRegisters, newMemory, newCursor, videoRamView);
+                    const biosResult = handleBiosInterrupt(newRegisters, newMemory, newCursor, videoRamView, screenCols);
                     newCursor = biosResult.newCursor;
                     if (biosResult.newRegs) newRegisters = biosResult.newRegs;
                     if (biosResult.newCols) setScreenCols(biosResult.newCols);
                 }
                 else if (val1 === '16H') {
                     // 键盘中断
-                    const kbResult = handleKeyboardInterrupt(newRegisters, keyBuffer);
+                    const kbResult = handleKeyboardInterrupt(newRegisters, localKeyBuffer);
                     if (kbResult.newRegs) newRegisters = kbResult.newRegs;
                     if (kbResult.newFlags) {
                         Object.assign(newFlags, kbResult.newFlags);
                     }
                     if (kbResult.shouldConsume) {
+                        localKeyBuffer.shift();
                         setKeyBuffer(prev => prev.slice(1));
                     }
                 }
@@ -303,7 +326,7 @@ export const useAssembler = () => {
               
               const { r, c } = cursor;
               // 默认属性 0x07 (白字黑底)
-              writeCharToVideoMemory(videoRam, r, c, charCode, 0x07);
+              writeCharToVideoMemory(videoRam, r, c, charCode, 0x07, screenCols);
               
               setMemory(newMemory);
               setVideoMemory(new Uint8Array(videoRam));

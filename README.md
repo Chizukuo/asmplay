@@ -345,7 +345,7 @@ END START
 
 ## 🔗 相关链接
 
-- [在线演示](https://chizukuo.github.io/asmplay) *(如果已部署)*
+- [在线演示](https://asmplay.chizunet.cc/)
 - [开发计划](./TODO.md) - 查看未来功能规划
 - [指令集文档](./INSTRUCTION_SET.md) - 详细的指令说明
 

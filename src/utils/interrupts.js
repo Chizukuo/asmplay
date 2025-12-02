@@ -2,7 +2,7 @@ import { SCREEN_ROWS, SCREEN_COLS } from '../constants';
 import { safeReadMemory } from './memoryUtils';
 import { getCharFromCode, printToConsole, writeCharToVideoMemory } from './displayUtils';
 
-export const handleDosInterrupt = (regs, currentMemory, currentCursor, videoMemory, callbacks = {}) => {
+export const handleDosInterrupt = (regs, currentMemory, currentCursor, videoMemory, callbacks = {}, currentCols = SCREEN_COLS) => {
   const ah = (regs.AX & 0xFF00) >> 8;
   const al = regs.AX & 0xFF;
   let newCursor = currentCursor;
@@ -13,7 +13,7 @@ export const handleDosInterrupt = (regs, currentMemory, currentCursor, videoMemo
     if (ah === 0x02) {
       // 输出单个字符到屏幕（DL = 字符）
       const charCode = regs.DX & 0xFF;
-      const result = printToConsole(charCode, newCursor, videoMemory);
+      const result = printToConsole(charCode, newCursor, videoMemory, null, currentCols);
       newCursor = result;
     } else if (ah === 0x06) {
       // 直接控制台 I/O
@@ -22,7 +22,7 @@ export const handleDosInterrupt = (regs, currentMemory, currentCursor, videoMemo
         // 输入：设置 ZF=1 表示无字符，这里简化处理
       } else {
         // 输出
-        const result = printToConsole(dl, newCursor, videoMemory);
+        const result = printToConsole(dl, newCursor, videoMemory, null, currentCols);
         newCursor = result;
       }
     } else if (ah === 0x09) {
@@ -43,7 +43,7 @@ export const handleDosInterrupt = (regs, currentMemory, currentCursor, videoMemo
       } catch (err) {
         console.error(`INT 21H AH=09H 读取字符串错误: ${err.message}`);
       }
-      const result = printToConsole(output, newCursor, videoMemory);
+      const result = printToConsole(output, newCursor, videoMemory, null, currentCols);
       newCursor = result;
     } else if (ah === 0x2A) {
       // 获取系统日期：填充 CX=年, DH=月, DL=日
@@ -121,7 +121,7 @@ export const handleTimeInterrupt = (regs) => {
   return { newRegs, newFlags };
 };
 
-export const handleBiosInterrupt = (regs, currentMemory, currentCursor, videoMemory) => {
+export const handleBiosInterrupt = (regs, currentMemory, currentCursor, videoMemory, currentCols = SCREEN_COLS) => {
   const ah = (regs.AX & 0xFF00) >> 8;
   const al = regs.AX & 0xFF;
   let newCursor = currentCursor;
@@ -158,13 +158,13 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, videoMem
           const charCode = safeReadMemory(bp + i, 1, currentMemory, true, regs.ES);
           
           if (row >= SCREEN_ROWS) break;
-          if (col >= SCREEN_COLS) {
+          if (col >= currentCols) {
             col = 0;
             row++;
             if (row >= SCREEN_ROWS) break;
           }
           
-          writeCharToVideoMemory(videoMemory, row, col, charCode, bl);
+          writeCharToVideoMemory(videoMemory, row, col, charCode, bl, currentCols);
           col++;
         }
       } catch (err) {
@@ -186,7 +186,7 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, videoMem
       // 设置光标位置
       const row = (regs.DX & 0xFF00) >> 8;
       const col = regs.DX & 0x00FF;
-      if (row < SCREEN_ROWS && col < SCREEN_COLS) {
+      if (row < SCREEN_ROWS && col < currentCols) {
         newCursor = { r: row, c: col };
       } else {
         // 光标位置越界
@@ -206,8 +206,8 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, videoMem
       if (al === 0) {
          // Clear window
          for (let r = startRow; r <= endRow && r < SCREEN_ROWS; r++) {
-           for (let c = startCol; c <= endCol && c < SCREEN_COLS; c++) {
-             writeCharToVideoMemory(videoMemory, r, c, 0x20, bh);
+           for (let c = startCol; c <= endCol && c < currentCols; c++) {
+             writeCharToVideoMemory(videoMemory, r, c, 0x20, bh, currentCols);
            }
          }
       } else {
@@ -225,11 +225,11 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, videoMem
                       
                       if (srcRow <= endRow) {
                           // Copy from lower line
-                          const srcIdx = (srcRow * SCREEN_COLS + c) * 2;
+                          const srcIdx = (srcRow * currentCols + c) * 2;
                           charCode = videoMemory[srcIdx];
                           attr = videoMemory[srcIdx + 1];
                       }
-                      writeCharToVideoMemory(videoMemory, r, c, charCode, attr);
+                      writeCharToVideoMemory(videoMemory, r, c, charCode, attr, currentCols);
                   }
               }
           } else { // Scroll Down (AH=07H)
@@ -241,11 +241,11 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, videoMem
                       
                       if (srcRow >= startRow) {
                           // Copy from upper line
-                          const srcIdx = (srcRow * SCREEN_COLS + c) * 2;
+                          const srcIdx = (srcRow * currentCols + c) * 2;
                           charCode = videoMemory[srcIdx];
                           attr = videoMemory[srcIdx + 1];
                       }
-                      writeCharToVideoMemory(videoMemory, r, c, charCode, attr);
+                      writeCharToVideoMemory(videoMemory, r, c, charCode, attr, currentCols);
                   }
               }
           }

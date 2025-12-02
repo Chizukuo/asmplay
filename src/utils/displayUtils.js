@@ -20,9 +20,9 @@ export const getCharFromCode = (code) => {
 // 默认属性：白字黑底 (0x07)
 const DEFAULT_ATTR = 0x07;
 
-export const writeCharToVideoMemory = (videoMemory, row, col, charCode, attr = null) => {
-  if (row < 0 || row >= SCREEN_ROWS || col < 0 || col >= SCREEN_COLS) return;
-  const offset = (row * SCREEN_COLS + col) * 2;
+export const writeCharToVideoMemory = (videoMemory, row, col, charCode, attr = null, cols = SCREEN_COLS) => {
+  if (row < 0 || row >= SCREEN_ROWS || col < 0 || col >= cols) return;
+  const offset = (row * cols + col) * 2;
   if (offset + 1 >= videoMemory.length) return;
   
   videoMemory[offset] = charCode & 0xFF;
@@ -38,8 +38,8 @@ export const clearVideoMemory = (videoMemory, attr = DEFAULT_ATTR) => {
   }
 };
 
-export const scrollUp = (videoMemory, lines = 1, fillAttr = DEFAULT_ATTR) => {
-  const bytesPerLine = SCREEN_COLS * 2;
+export const scrollUp = (videoMemory, lines = 1, fillAttr = DEFAULT_ATTR, cols = SCREEN_COLS) => {
+  const bytesPerLine = cols * 2;
   // 移动数据
   const moveSize = (SCREEN_ROWS - lines) * bytesPerLine;
   if (moveSize > 0) {
@@ -53,7 +53,7 @@ export const scrollUp = (videoMemory, lines = 1, fillAttr = DEFAULT_ATTR) => {
   }
 };
 
-export const printToConsole = (input, currentCursor, videoMemory, attr = null) => {
+export const printToConsole = (input, currentCursor, videoMemory, attr = null, cols = SCREEN_COLS) => {
   let { r, c } = currentCursor;
   
   // 如果输入是数字，当作单个字符码处理
@@ -71,7 +71,7 @@ export const printToConsole = (input, currentCursor, videoMemory, attr = null) =
     if (char === '\n') {
         r++;
         if (r >= SCREEN_ROWS) {
-            scrollUp(videoMemory, 1, attr || DEFAULT_ATTR);
+            scrollUp(videoMemory, 1, attr || DEFAULT_ATTR, cols);
             r = SCREEN_ROWS - 1;
         }
         continue;
@@ -80,18 +80,18 @@ export const printToConsole = (input, currentCursor, videoMemory, attr = null) =
     // Backspace (0x08)
     if (code === 8) {
         if (c > 0) c--;
-        writeCharToVideoMemory(videoMemory, r, c, 0x20, attr);
+        writeCharToVideoMemory(videoMemory, r, c, 0x20, attr, cols);
         continue;
     }
 
-    if (r < SCREEN_ROWS && c < SCREEN_COLS) {
-        writeCharToVideoMemory(videoMemory, r, c, code, attr);
+    if (r < SCREEN_ROWS && c < cols) {
+        writeCharToVideoMemory(videoMemory, r, c, code, attr, cols);
         c++;
-        if (c >= SCREEN_COLS) {
+        if (c >= cols) {
             c = 0;
             r++;
             if (r >= SCREEN_ROWS) {
-                scrollUp(videoMemory, 1, attr || DEFAULT_ATTR);
+                scrollUp(videoMemory, 1, attr || DEFAULT_ATTR, cols);
                 r = SCREEN_ROWS - 1;
             }
         }
