@@ -3,7 +3,7 @@ import { MEMORY_SIZE, INSTRUCTION_DELAY, SCREEN_ROWS, SCREEN_COLS, PRESET_PROGRA
 import { parseCode } from '../utils/assembler';
 import { executeCpuInstruction } from '../utils/cpu';
 import { handleDosInterrupt, handleBiosInterrupt, handleKeyboardInterrupt, handleTimeInterrupt } from '../utils/interrupts';
-import { clearVideoMemory, writeCharToVideoMemory } from '../utils/displayUtils';
+import { clearVideoMemory, writeCharToVideoMemory, scrollUp } from '../utils/displayUtils';
 
 // CP437 to Unicode mapping for box drawing characters (0x80 - 0xFF)
 
@@ -38,6 +38,7 @@ export const useAssembler = () => {
   const [watchVariables, setWatchVariables] = useState([]);
   const [callStack, setCallStack] = useState([]);
   const [keyBuffer, setKeyBuffer] = useState([]);
+  const keyBufferRef = useRef([]); // Ref for immediate access in loop
   const [lastKeyPressed, setLastKeyPressed] = useState(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
@@ -54,6 +55,11 @@ export const useAssembler = () => {
     }, 1000);
     return () => clearTimeout(timer);
   }, [code]);
+
+  // Sync keyBuffer state to ref (though we mainly push to ref directly)
+  useEffect(() => {
+      keyBufferRef.current = keyBuffer;
+  }, [keyBuffer]);
 
   // 初始化内存和显存
   useEffect(() => {
@@ -101,12 +107,21 @@ export const useAssembler = () => {
     
     let newCallStack = [...callStack];
     let interruptOccurred = false;
-    let localKeyBuffer = [...keyBuffer];
+    // Use Ref for key buffer to get latest keys during long batch execution
+    let localKeyBuffer = keyBufferRef.current; 
+    let currentScreenCols = screenCols; // Local copy of screenCols for batch execution
 
     // 光速模式：运行到程序结束，但减小批处理大小以提高响应性和显示准确性
     const isLightSpeed = (speed === 0 && isPlaying);
-    // Reduce batch size for light speed mode to improve display accuracy
-    const BATCH_SIZE = isLightSpeed ? 1000 : (speed < 10 ? 500 : 10);
+    
+    // Determine Batch Size
+    // Fix: Ensure manual step (isPlaying=false) and slow play (speed >= 10) run 1 instruction at a time
+    let BATCH_SIZE = 1;
+    if (isPlaying) {
+        if (speed === 0) BATCH_SIZE = 50000;
+        else if (speed < 10) BATCH_SIZE = 500; // Fast mode
+        else BATCH_SIZE = 1; // Normal/Slow mode
+    }
 
     for (let step = 0; step < BATCH_SIZE; step++) {
         while (currentPc < parsedInstructions.length && parsedInstructions[currentPc].type === 'EMPTY') {
@@ -148,22 +163,40 @@ export const useAssembler = () => {
                     const ah = (newRegisters.AX & 0xFF00) >> 8;
                     if (ah === 0x01 || ah === 0x0A) {
                         // Check if we have keys in buffer first
-                        if (localKeyBuffer.length > 0) {
-                            const key = localKeyBuffer.shift();
-                            setKeyBuffer(prev => prev.slice(1));
+                        // Re-read from ref to ensure we catch keys pressed during batch execution
+                        if (keyBufferRef.current.length > 0) {
+                            const key = keyBufferRef.current[0]; // Peek
+                            // Remove from ref
+                            keyBufferRef.current = keyBufferRef.current.slice(1);
+                            // Update local variable just in case (though we use ref directly)
+                            localKeyBuffer = keyBufferRef.current;
                             
                             // Set AL = char
                             newRegisters.AX = (newRegisters.AX & 0xFF00) | (key.ascii & 0xFF);
                             
                             // Echo to screen
-                            writeCharToVideoMemory(videoRamView, newCursor.r, newCursor.c, key.ascii, 0x07);
-                            
-                            // Move cursor
-                            newCursor.c++;
-                            if (newCursor.c >= screenCols) {
+                            if (key.ascii === 8) { // Backspace
+                                if (newCursor.c > 0) {
+                                    newCursor.c--;
+                                    writeCharToVideoMemory(videoRamView, newCursor.r, newCursor.c, 0x20, 0x07, currentScreenCols); // Erase
+                                } else if (newCursor.r > 0) {
+                                    newCursor.r--;
+                                    newCursor.c = currentScreenCols - 1;
+                                    writeCharToVideoMemory(videoRamView, newCursor.r, newCursor.c, 0x20, 0x07, currentScreenCols);
+                                }
+                            } else if (key.ascii === 13) { // CR
                                 newCursor.c = 0;
-                                newCursor.r++;
-                                if (newCursor.r >= SCREEN_ROWS) newCursor.r = 0;
+                            } else {
+                                writeCharToVideoMemory(videoRamView, newCursor.r, newCursor.c, key.ascii, 0x07, currentScreenCols);
+                                newCursor.c++;
+                                if (newCursor.c >= currentScreenCols) {
+                                    newCursor.c = 0;
+                                    newCursor.r++;
+                                    if (newCursor.r >= SCREEN_ROWS) {
+                                        scrollUp(videoRamView, 1, 0x07, currentScreenCols);
+                                        newCursor.r = SCREEN_ROWS - 1;
+                                    }
+                                }
                             }
                         } else {
                             setIsWaitingForInput(true);
@@ -175,7 +208,7 @@ export const useAssembler = () => {
                             }
                         }
                     } else {
-                        const dosResult = handleDosInterrupt(newRegisters, newMemory, newCursor, videoRamView, { setIsPlaying }, screenCols);
+                        const dosResult = handleDosInterrupt(newRegisters, newMemory, newCursor, videoRamView, { setIsPlaying }, currentScreenCols);
                         newCursor = dosResult.newCursor;
                         if (dosResult.newRegs) newRegisters = dosResult.newRegs;
                         if (dosResult.shouldStop) {
@@ -185,21 +218,36 @@ export const useAssembler = () => {
                     }
                 }
                 else if (val1 === '10H') {
-                    const biosResult = handleBiosInterrupt(newRegisters, newMemory, newCursor, videoRamView, screenCols);
+                    const biosResult = handleBiosInterrupt(newRegisters, newMemory, newCursor, videoRamView, currentScreenCols);
                     newCursor = biosResult.newCursor;
                     if (biosResult.newRegs) newRegisters = biosResult.newRegs;
-                    if (biosResult.newCols) setScreenCols(biosResult.newCols);
+                    if (biosResult.newCols) {
+                        setScreenCols(biosResult.newCols);
+                        currentScreenCols = biosResult.newCols; // Update local copy immediately
+                    }
                 }
                 else if (val1 === '16H') {
                     // 键盘中断
-                    const kbResult = handleKeyboardInterrupt(newRegisters, localKeyBuffer);
-                    if (kbResult.newRegs) newRegisters = kbResult.newRegs;
-                    if (kbResult.newFlags) {
-                        Object.assign(newFlags, kbResult.newFlags);
-                    }
-                    if (kbResult.shouldConsume) {
-                        localKeyBuffer.shift();
-                        setKeyBuffer(prev => prev.slice(1));
+                    // Use ref for keyboard interrupt too
+                    const ah = (newRegisters.AX & 0xFF00) >> 8;
+                    if (ah === 0x00 && keyBufferRef.current.length === 0) {
+                        // Blocking read: if no key, wait
+                        setIsWaitingForInput(true);
+                        setIsPlaying(false);
+                        interruptOccurred = true;
+                        if (isLightSpeed) {
+                            clearInterval(intervalRef.current);
+                            throw new Error("__BREAK__");
+                        }
+                    } else {
+                        const kbResult = handleKeyboardInterrupt(newRegisters, keyBufferRef.current);
+                        if (kbResult.newRegs) newRegisters = kbResult.newRegs;
+                        if (kbResult.newFlags) {
+                            Object.assign(newFlags, kbResult.newFlags);
+                        }
+                        if (kbResult.shouldConsume) {
+                            keyBufferRef.current = keyBufferRef.current.slice(1);
+                        }
                     }
                 }
                 else if (val1 === '1AH') {
@@ -262,6 +310,8 @@ export const useAssembler = () => {
     setVideoMemory(new Uint8Array(videoRamView));
     setCursor(newCursor);
     setCallStack(newCallStack);
+    // Sync ref back to state for UI consistency
+    setKeyBuffer([...keyBufferRef.current]);
 
   }, [pc, parsedInstructions, registers, memory, flags, cursor, videoMemory, symbolTable, labelMap, segmentTable, speed, isWaitingForInput, isPlaying, callStack, keyBuffer, breakpoints]);
 
@@ -300,79 +350,53 @@ export const useAssembler = () => {
     setError(null);
     setBreakpoints(new Set());
     setKeyBuffer([]);
+    keyBufferRef.current = []; // Reset ref
     setLastKeyPressed(null);
     setIsWaitingForInput(false);
   }, []);
 
   const handleInput = useCallback((char) => {
       if (isWaitingForInput) {
-          // 只接受大写英文字母
-          const upperChar = char.toUpperCase();
-          const charCode = upperChar.charCodeAt(0);
+          // Allow all characters that are passed from App.jsx
+          // App.jsx handles filtering/mapping (e.g. Enter -> \r)
+          const charCode = char.charCodeAt(0);
           
-          // 检查是否是有效字符（A-Z, 0-9, 空格等）
-          if ((charCode >= 65 && charCode <= 90) || // A-Z
-              (charCode >= 48 && charCode <= 57) || // 0-9
-              charCode === 32 || charCode === 13) { // 空格或回车
-              
-              setRegisters(prev => {
-                  // AL = char
-                  const newAX = (prev.AX & 0xFF00) | (charCode & 0xFF);
-                  return { ...prev, AX: newAX };
-              });
-              
-              // 回显到屏幕并同步到主内存
-              const newMemory = new Uint8Array(memory);
-              const VIDEO_MEMORY_START = 0xB8000;
-              const videoRam = newMemory.subarray(VIDEO_MEMORY_START, VIDEO_MEMORY_START + VIDEO_MEMORY_SIZE);
-              
-              const { r, c } = cursor;
-              // 默认属性 0x07 (白字黑底)
-              writeCharToVideoMemory(videoRam, r, c, charCode, 0x07, screenCols);
-              
-              setMemory(newMemory);
-              setVideoMemory(new Uint8Array(videoRam));
-              
-              // 移动光标
-              setCursor(prev => {
-                  let newC = prev.c + 1;
-                  let newR = prev.r;
-                  if (newC >= screenCols) {
-                      newC = 0;
-                      newR++;
-                      if (newR >= SCREEN_ROWS) newR = 0;
-                  }
-                  return { r: newR, c: newC };
-              });
-              
-              setIsWaitingForInput(false);
-              setIsPlaying(true);
-          }
+          // Push to buffer directly so the INT 21H instruction can pick it up upon re-execution
+          const now = Date.now();
+          keyBufferRef.current = [...keyBufferRef.current, { ascii: charCode, scanCode: charCode, timestamp: now }];
+          setKeyBuffer([...keyBufferRef.current]);
+          
+          setIsWaitingForInput(false);
+          setIsPlaying(true);
       }
-  }, [isWaitingForInput, cursor, screenCols, memory]);
+  }, [isWaitingForInput]);
 
   // 模拟按键事件（供外部调用）
   const simulateKeyPress = useCallback((char) => {
       const charCode = char.charCodeAt(0);
       const scanCode = charCode; // 简化：扫描码=ASCII码
+      
+      const now = Date.now();
       // 防止重复添加相同的按键（检查最后一个按键和时间戳）
-      setKeyBuffer(prev => {
-        const now = Date.now();
-        // 如果上一个按键是相同的且在50ms内，忽略（防止重复）
-        if (prev.length > 0) {
-          const lastKey = prev[prev.length - 1];
+      // Check ref directly
+      if (keyBufferRef.current.length > 0) {
+          const lastKey = keyBufferRef.current[keyBufferRef.current.length - 1];
           if (lastKey.ascii === charCode && lastKey.timestamp && (now - lastKey.timestamp) < 50) {
-            return prev; // 忽略重复按键
+            return; // Ignore duplicate
           }
-        }
-        return [...prev, { ascii: charCode, scanCode, timestamp: now }];
-      });
+      }
+      
+      const newKey = { ascii: charCode, scanCode, timestamp: now };
+      keyBufferRef.current = [...keyBufferRef.current, newKey];
+      setKeyBuffer([...keyBufferRef.current]); // Update state for UI
+      
       setLastKeyPressed({ ascii: charCode, scanCode, timestamp: Date.now() });
   }, []);
 
   // 清空按键缓冲区（按键被读取后）
   const consumeKey = useCallback(() => {
-      setKeyBuffer(prev => prev.slice(1));
+      keyBufferRef.current = keyBufferRef.current.slice(1);
+      setKeyBuffer([...keyBufferRef.current]);
   }, []);
 
   useEffect(() => {

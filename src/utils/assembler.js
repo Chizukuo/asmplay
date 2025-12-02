@@ -91,15 +91,34 @@ export const parseCode = (code) => {
     
     if (inDataSegment) {
       const parts = line.split(/\s+/);
-      const type = parts[1]; // DB, DW, DD
+      let type = parts[1]; // Default: Label Type Value
+      let varName = parts[0];
+      let valueStartIndex = 0;
+
+      // Check if the first part is the type (no label)
+      if (['DB', 'DW', 'DD'].includes(parts[0])) {
+          type = parts[0];
+          varName = null; // No label
+          // Reconstruct the line without the type to find values
+          // But we need to be careful about parsing.
+          // valueStr logic below uses indexOf(type).
+      } else if (!['DB', 'DW', 'DD'].includes(type)) {
+          // Not a data definition we recognize, or maybe a label on a separate line?
+          // For now, ignore if not DB/DW/DD
+          continue;
+      }
       
       if (['DB', 'DW', 'DD'].includes(type)) {
-          const varName = parts[0];
-          // 存储相对于DS:0000的偏移量，而非物理地址
-          dataMap[varName] = currentDataOffset;
+          if (varName) {
+              // 存储相对于DS:0000的偏移量，而非物理地址
+              dataMap[varName] = currentDataOffset;
+          }
           
           // Extract the value part: everything after the type
-          let valueStr = line.substring(line.indexOf(type) + type.length).trim();
+          // We need to find the type in the line to split correctly
+          // Use regex to find type surrounded by spaces or at start/end
+          const typeIndex = line.search(new RegExp(`\\b${type}\\b`));
+          let valueStr = line.substring(typeIndex + type.length).trim();
           
           let values = [];
           

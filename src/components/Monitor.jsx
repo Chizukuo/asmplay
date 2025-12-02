@@ -2,8 +2,8 @@ import React, { useRef, useEffect, useState } from 'react';
 import { SCREEN_ROWS, SCREEN_COLS, DOS_PALETTE } from '../constants';
 import { getCharFromCode } from '../utils/displayUtils';
 
-const CHAR_WIDTH = 9;  // 字符宽
-const CHAR_HEIGHT = 16; // 字符高
+const CHAR_WIDTH = 12;  // 字符宽
+const CHAR_HEIGHT = 24; // 字符高
 const DEFAULT_CANVAS_HEIGHT = SCREEN_ROWS * CHAR_HEIGHT; // 400
 
 const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_COLS }) => {
@@ -21,7 +21,7 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
   // 引入字体
   useEffect(() => {
     const link = document.createElement('link');
-    link.href = 'https://fonts.googleapis.com/css2?family=VT323&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap';
     link.rel = 'stylesheet';
     document.head.appendChild(link);
     return () => document.head.removeChild(link);
@@ -40,11 +40,13 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
 
     try {
       // 绘制背景
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = '#0c0c0c'; // 更现代的深色背景
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-      ctx.font = `${CHAR_HEIGHT}px 'VT323', monospace`;
-      ctx.textBaseline = 'top';
+      // 设置字体 - 使用稍微小一点的字号以留出呼吸空间
+      const fontSize = CHAR_HEIGHT - 4;
+      ctx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
+      ctx.textBaseline = 'middle'; // 改为 middle 对齐更容易垂直居中
 
       if (videoMemory && videoMemory.length > 0) {
         for (let r = 0; r < SCREEN_ROWS; r++) {
@@ -68,13 +70,26 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
             let bgColor = DOS_PALETTE[bgIndex] || DOS_PALETTE[0];
 
             // 绘制背景块
-            ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
-            ctx.fillRect(c * CHAR_WIDTH, r * CHAR_HEIGHT, CHAR_WIDTH, CHAR_HEIGHT);
+            // 如果背景是黑色(索引0)，使用我们自定义的深色背景，否则使用调色板颜色
+            if (bgIndex !== 0) {
+                ctx.fillStyle = `rgb(${bgColor[0]}, ${bgColor[1]}, ${bgColor[2]})`;
+                ctx.fillRect(c * CHAR_WIDTH, r * CHAR_HEIGHT, CHAR_WIDTH, CHAR_HEIGHT);
+            }
 
             // 绘制字符
             if (!isBlink || blinkRef.current) {
-              ctx.fillStyle = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
-              ctx.fillText(char, c * CHAR_WIDTH, r * CHAR_HEIGHT - 2);
+              const colorStr = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
+              ctx.fillStyle = colorStr;
+              
+              // 添加发光效果
+              ctx.shadowBlur = 4;
+              ctx.shadowColor = colorStr;
+              
+              // 垂直居中绘制
+              ctx.fillText(char, c * CHAR_WIDTH + (CHAR_WIDTH - ctx.measureText(char).width) / 2, r * CHAR_HEIGHT + CHAR_HEIGHT / 2);
+              
+              // 重置阴影以避免影响背景绘制（虽然这里是循环末尾，但为了保险）
+              ctx.shadowBlur = 0;
             }
           }
         }
@@ -82,8 +97,11 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
 
       // 绘制光标 (块状光标，半透明)
       if (cursor && (!isWaitingForInput || blinkRef.current)) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'; 
-        ctx.fillRect(cursor.c * CHAR_WIDTH, cursor.r * CHAR_HEIGHT + 12, CHAR_WIDTH, 4); // 下划线加粗
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; 
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+        ctx.fillRect(cursor.c * CHAR_WIDTH, cursor.r * CHAR_HEIGHT + CHAR_HEIGHT - 4, CHAR_WIDTH, 3); 
+        ctx.shadowBlur = 0;
       }
     } catch (e) {
       console.error("Monitor render error:", e);
@@ -119,14 +137,14 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
   return (
     <div className="relative w-full max-w-4xl mx-auto select-none flex flex-col gap-2">
       {/* Modern Screen Container */}
-      <div className="relative bg-black rounded-lg overflow-hidden shadow-lg border border-gray-800">
+      <div className="relative bg-[#0c0c0c] rounded-xl overflow-hidden shadow-2xl border border-gray-800 ring-1 ring-white/10">
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/5 to-transparent opacity-50"></div>
         <canvas
           ref={canvasRef}
           width={canvasWidth}
           height={canvasHeight}
-          className="w-full h-auto block"
+          className="w-full h-auto block relative z-10"
           style={{ 
-            imageRendering: 'pixelated',
             aspectRatio: `${canvasWidth}/${canvasHeight}`,
           }}
           onMouseMove={handleMouseMove}

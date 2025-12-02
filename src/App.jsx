@@ -63,20 +63,31 @@ export default function AssemblyVisualizer() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       
       if (isWaitingForInput) {
-        // 等待输入模式：直接处理输入（只接受大写字母、数字）
+        // 等待输入模式：直接处理输入
         e.preventDefault();
-        const char = e.key.toUpperCase();
-        if ((char.length === 1 && /[A-Z0-9]/.test(char)) || e.key === 'Enter') {
-          handleInput(char === 'ENTER' ? '\r' : char);
+        if (e.key === 'Backspace') {
+            handleInput('\b');
+        } else if (e.key === 'Enter') {
+            handleInput('\r');
+        } else if (e.key === ' ') {
+            handleInput(' ');
+        } else if (e.key.length === 1) {
+            handleInput(e.key.toUpperCase());
         }
       } else if (isPlaying) {
         // 程序运行时：将按键放入缓冲区（用于INT 16H检测）
-        if (e.key.length === 1) {
-          e.preventDefault();
-          simulateKeyPress(e.key.toUpperCase());
+        if (e.key === 'Backspace') {
+            e.preventDefault();
+            simulateKeyPress('\b');
         } else if (e.key === 'Enter') {
-          e.preventDefault();
-          simulateKeyPress('\r');
+            e.preventDefault();
+            simulateKeyPress('\r');
+        } else if (e.key === ' ') {
+            e.preventDefault();
+            simulateKeyPress(' ');
+        } else if (e.key.length === 1) {
+            e.preventDefault();
+            simulateKeyPress(e.key.toUpperCase());
         }
       }
     };
