@@ -24,6 +24,7 @@ export default {
         'float': 'float 3s ease-in-out infinite',
         'shimmer': 'shimmer 2s linear infinite',
         'fade-in-up': 'fade-in-up 0.5s ease-out',
+        'scale-in': 'scale-in 0.2s ease-out forwards',
       },
       borderWidth: {
         '3': '3px',
@@ -31,6 +32,10 @@ export default {
       backdropBlur: {
         xs: '2px',
       },
+      boxShadow: {
+        'glow': '0 0 15px rgba(59, 130, 246, 0.5)',
+        'glow-amber': '0 0 15px rgba(245, 158, 11, 0.5)',
+      }
     },
   },
   plugins: [],

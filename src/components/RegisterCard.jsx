@@ -15,30 +15,42 @@ const RegisterCard = ({ name, val }) => {
   const lStr = (val & 0xFF).toString(16).toUpperCase().padStart(2,'0');
   
   return (
-    <div className={`register-card ${highlight ? 'active' : 'inactive'}`}>
+    <div className={`
+      relative overflow-hidden rounded-lg border transition-all duration-300
+      ${highlight 
+        ? 'bg-blue-50 dark:bg-amber-900/20 border-blue-400 dark:border-amber-500 shadow-glow dark:shadow-glow-amber scale-105 z-10' 
+        : 'bg-white dark:bg-zinc-800/50 border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
+      }
+    `}>
       
-      <div className="px-3 py-2 flex flex-col items-center justify-center relative z-10">
-        <div className="flex items-center justify-between w-full mb-1">
-            <span className={`register-card-name ${highlight ? 'active' : 'inactive'}`}>
+      <div className="px-2 py-1.5 sm:px-3 sm:py-2 flex flex-col items-center justify-center relative z-10">
+        <div className="flex items-center justify-between w-full mb-1 sm:mb-1.5">
+            <span className={`
+              text-[10px] sm:text-xs font-bold tracking-wider
+              ${highlight ? 'text-blue-600 dark:text-amber-400' : 'text-gray-500 dark:text-zinc-400'}
+            `}>
                 {name}
             </span>
             {isGeneralPurpose && (
-              <div className="flex gap-1 text-[9px] font-mono text-gray-400 dark:text-neutral-600">
-                  <span>{hStr}</span>
-                  <span className="text-gray-300 dark:text-neutral-700">|</span>
-                  <span>{lStr}</span>
+              <div className="flex gap-1 text-[10px] font-mono text-gray-400 dark:text-zinc-500 bg-gray-100 dark:bg-black/20 px-1.5 py-0.5 rounded">
+                  <span className={highlight ? 'text-blue-500 dark:text-amber-500/80' : ''}>{hStr}</span>
+                  <span className="text-gray-300 dark:text-zinc-700">|</span>
+                  <span className={highlight ? 'text-blue-500 dark:text-amber-500/80' : ''}>{lStr}</span>
               </div>
             )}
         </div>
 
-        <div className={`register-card-value ${highlight ? 'active' : 'inactive'}`}>
+        <div className={`
+          font-mono text-base sm:text-lg font-bold tracking-widest transition-colors duration-200
+          ${highlight ? 'text-blue-700 dark:text-amber-300' : 'text-gray-800 dark:text-gray-200'}
+        `}>
             {val.toString(16).toUpperCase().padStart(4, '0')}
         </div>
       </div>
       
-      {/* Highlight Effect */}
+      {/* Background Highlight Effect */}
       {highlight && (
-          <div className="absolute inset-0 bg-blue-400/5 dark:bg-yellow-400/5 animate-pulse pointer-events-none"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/10 dark:via-amber-400/10 to-transparent animate-shimmer pointer-events-none"></div>
       )}
     </div>
   );

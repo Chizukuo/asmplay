@@ -81,14 +81,18 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
               const colorStr = `rgb(${fgColor[0]}, ${fgColor[1]}, ${fgColor[2]})`;
               ctx.fillStyle = colorStr;
               
-              // 添加发光效果
-              ctx.shadowBlur = 4;
-              ctx.shadowColor = colorStr;
+              // 添加发光效果 - 仅对高亮字符增强发光
+              if (fgIndex > 7) {
+                  ctx.shadowBlur = 6;
+                  ctx.shadowColor = colorStr;
+              } else {
+                  ctx.shadowBlur = 0;
+              }
               
               // 垂直居中绘制
               ctx.fillText(char, c * CHAR_WIDTH + (CHAR_WIDTH - ctx.measureText(char).width) / 2, r * CHAR_HEIGHT + CHAR_HEIGHT / 2);
               
-              // 重置阴影以避免影响背景绘制（虽然这里是循环末尾，但为了保险）
+              // 重置阴影以避免影响背景绘制
               ctx.shadowBlur = 0;
             }
           }
@@ -97,7 +101,7 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
 
       // 绘制光标 (块状光标，半透明)
       if (cursor && (!isWaitingForInput || blinkRef.current)) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; 
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'; 
         ctx.shadowBlur = 8;
         ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
         ctx.fillRect(cursor.c * CHAR_WIDTH, cursor.r * CHAR_HEIGHT + CHAR_HEIGHT - 4, CHAR_WIDTH, 3); 

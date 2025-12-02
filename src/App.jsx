@@ -494,44 +494,43 @@ export default function AssemblyVisualizer() {
       />
 
       {/* Header */}
-      <header className="app-header">
+      <header className="app-header glass-panel border-b-0 mb-2 rounded-xl mx-2 mt-2">
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-           <div className="logo-container">
+           <div className="logo-container bg-blue-500/10 dark:bg-yellow-500/10 p-2 rounded-lg">
              <Terminal className="text-blue-600 dark:text-yellow-500" size={20} />
            </div>
            <div className="flex-1 sm:flex-none">
-             <h1 className="app-title">
+             <h1 className="app-title text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 dark:from-yellow-400 dark:to-orange-500">
                Asmplay 
-               <span className="app-badge">SIM</span>
+               <span className="app-badge ml-2 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 dark:bg-yellow-900/30 dark:text-yellow-400 border border-blue-200 dark:border-yellow-700/50">SIM</span>
              </h1>
            </div>
-           {/* Mobile Menu Toggle could go here */}
         </div>
         
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
-          <button onClick={toggleTheme} className="header-btn whitespace-nowrap" title={theme === 'light' ? "切换到暗黑模式" : "切换到白天模式"}>
-            {theme === 'light' ? <Moon size={14} className="text-gray-600"/> : <Sun size={14} className="text-yellow-400"/>}
+          <button onClick={toggleTheme} className="header-btn glass-button p-2 rounded-lg" title={theme === 'light' ? "切换到暗黑模式" : "切换到白天模式"}>
+            {theme === 'light' ? <Moon size={18} className="text-gray-600"/> : <Sun size={18} className="text-yellow-400"/>}
           </button>
-          <div className="hidden sm:block w-px h-4 bg-gray-200 dark:bg-neutral-800 mx-1"></div>
-          <button onClick={() => setShowExamples(!showExamples)} className="header-btn header-btn-purple whitespace-nowrap">
-            <List size={14} className="text-purple-400"/> 
+          <div className="hidden sm:block w-px h-6 bg-gray-200 dark:bg-neutral-700 mx-2"></div>
+          <button onClick={() => setShowExamples(!showExamples)} className="header-btn glass-button flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+            <List size={16} className="text-purple-500"/> 
             <span className="hidden sm:inline">示例</span>
           </button>
-          <button onClick={() => reload(PRESET_PROGRAMS.default)} className="header-btn header-btn-red whitespace-nowrap">
-            <RotateCcw size={14} className="text-red-400"/> 
+          <button onClick={() => reload(PRESET_PROGRAMS.default)} className="header-btn glass-button flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-red-600 dark:hover:text-red-400 transition-colors">
+            <RotateCcw size={16} className="text-red-500"/> 
             <span className="hidden sm:inline">重置</span>
           </button>
-          <div className="hidden sm:block w-px h-4 bg-gray-200 dark:bg-neutral-800 mx-1"></div>
-          <button onClick={() => reload('')} className="header-btn header-btn-yellow whitespace-nowrap">
-            <Plus size={14} className="text-yellow-400"/> 
+          <div className="hidden sm:block w-px h-6 bg-gray-200 dark:bg-neutral-700 mx-2"></div>
+          <button onClick={() => reload('')} className="header-btn glass-button flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors">
+            <Plus size={16} className="text-yellow-500"/> 
             <span className="hidden sm:inline">新建</span>
           </button>
-          <button onClick={() => fileInputRef.current.click()} className="header-btn header-btn-orange whitespace-nowrap">
-            <Download size={14} className="text-orange-400"/> 
+          <button onClick={() => fileInputRef.current.click()} className="header-btn glass-button flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
+            <Download size={16} className="text-orange-500"/> 
             <span className="hidden sm:inline">导入</span>
           </button>
-          <button onClick={handleFileDownload} className="header-btn header-btn-blue whitespace-nowrap">
-            <Upload size={14} className="text-blue-400"/> 
+          <button onClick={handleFileDownload} className="header-btn glass-button flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+            <Upload size={16} className="text-blue-500"/> 
             <span className="hidden sm:inline">导出</span>
           </button>
         </div>
@@ -541,10 +540,12 @@ export default function AssemblyVisualizer() {
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
         
         {/* Left: Code Editor */}
-        <div className={`panel-left ${mobileTab === 'editor' ? 'h-full absolute inset-0 z-10 lg:relative lg:h-auto' : 'hidden lg:flex'}`}>
-           <div className="editor-header-bar">
+        <div className={`panel-left ${mobileTab === 'editor' ? 'h-full absolute inset-0 z-10 lg:relative lg:h-auto' : 'hidden lg:flex'} flex flex-col gap-2 p-2`}>
+           <div className="editor-header-bar glass-panel rounded-lg px-4 py-2 flex justify-between items-center">
               <span className="flex items-center gap-2">
-                <FileCode size={14} className="text-yellow-400"/> 
+                <div className="p-1.5 bg-yellow-500/10 rounded-md">
+                  <FileCode size={16} className="text-yellow-500"/> 
+                </div>
                 {isEditingFileName ? (
                   <input
                     type="text"
@@ -553,11 +554,11 @@ export default function AssemblyVisualizer() {
                     onBlur={() => setIsEditingFileName(false)}
                     onKeyPress={(e) => e.key === 'Enter' && setIsEditingFileName(false)}
                     autoFocus
-                    className="font-mono bg-white dark:bg-neutral-900 border border-blue-500 dark:border-yellow-500 px-2 py-1 rounded text-blue-600 dark:text-yellow-400 outline-none w-32"
+                    className="font-mono bg-gray-50 dark:bg-neutral-900 border border-blue-500 dark:border-yellow-500 px-2 py-1 rounded text-blue-600 dark:text-yellow-400 outline-none w-40 text-sm"
                   />
                 ) : (
                   <span 
-                    className="font-mono cursor-pointer hover:text-blue-600 dark:hover:text-yellow-400 transition-colors"
+                    className="font-mono font-medium text-gray-700 dark:text-gray-200 cursor-pointer hover:text-blue-600 dark:hover:text-yellow-400 transition-colors px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800"
                     onClick={() => setIsEditingFileName(true)}
                     title="点击编辑文件名"
                   >
@@ -565,14 +566,20 @@ export default function AssemblyVisualizer() {
                   </span>
                 )}
               </span>
-              <span className={`editor-status-badge ${isPlaying ? 'active' : 'idle'}`}>
-                {isPlaying ? '▶ EXECUTING' : '⏸ IDLE'}
+              <span className={`
+                px-3 py-1 rounded-full text-xs font-bold tracking-wider flex items-center gap-1.5 transition-all duration-300
+                ${isPlaying 
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800 animate-pulse' 
+                  : 'bg-gray-100 text-gray-500 dark:bg-neutral-800 dark:text-neutral-400 border border-gray-200 dark:border-neutral-700'}
+              `}>
+                <div className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                {isPlaying ? 'EXECUTING' : 'IDLE'}
               </span>
            </div>
            
            {/* Search/Replace/GoTo Panel */}
            {showSearchPanel && (
-             <div className="absolute top-10 right-4 z-50 w-80 bg-white dark:bg-neutral-800 shadow-xl border border-gray-200 dark:border-neutral-700 rounded-lg p-3 animate-in slide-in-from-top-2">
+             <div className="absolute top-14 right-6 z-50 w-80 bg-white/95 dark:bg-neutral-800/95 backdrop-blur-xl shadow-2xl border border-gray-200 dark:border-neutral-700 rounded-xl p-4 animate-scale-in">
                <div className="flex justify-between items-center mb-2">
                  <div className="flex gap-2 text-xs font-bold text-gray-500 dark:text-neutral-400">
                    <button onClick={() => setSearchMode('find')} className={`px-2 py-1 rounded ${searchMode === 'find' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'hover:bg-gray-100 dark:hover:bg-neutral-700'}`}>查找</button>
@@ -738,32 +745,51 @@ export default function AssemblyVisualizer() {
            </div>
            
            {/* Toolbar */}
-           <div className="editor-toolbar">
-              <div className="flex gap-2 items-center flex-1">
+           <div className="editor-toolbar glass-panel rounded-lg px-4 py-2 mt-2 flex justify-between items-center">
+              <div className="flex gap-3 items-center flex-1">
                 <button 
                   onClick={handlePlayPause}
-                  className={`play-btn ${isPlaying ? 'playing' : 'idle'}`}
+                  className={`
+                    flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all duration-200 shadow-sm
+                    ${isPlaying 
+                      ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/30' 
+                      : 'bg-green-500 hover:bg-green-600 text-white shadow-green-500/30 hover:-translate-y-0.5'}
+                  `}
                   title="F5"
                 >
-                   {isPlaying ? <><Pause size={16}/> <span className="hidden sm:inline">暂停</span></> : <><Play size={16}/> <span className="hidden sm:inline">运行</span></>}
+                   {isPlaying ? <><Pause size={18}/> <span className="hidden sm:inline">暂停</span></> : <><Play size={18}/> <span className="hidden sm:inline">运行</span></>}
                 </button>
-                <button onClick={executeStep} disabled={isPlaying} className="toolbar-btn toolbar-btn-blue" title="单步执行 (F10)">
-                   <StepForward size={18} />
+                <button 
+                  onClick={executeStep} 
+                  disabled={isPlaying} 
+                  className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" 
+                  title="单步执行 (F10)"
+                >
+                   <StepForward size={20} />
                 </button>
-                <button onClick={stepBack} disabled={isPlaying || !canUndo} className="toolbar-btn hover:text-orange-500 dark:hover:text-orange-400 hover:border-orange-200 dark:hover:border-orange-500/30" title="回退一步">
-                   <Undo size={18} />
+                <button 
+                  onClick={stepBack} 
+                  disabled={isPlaying || !canUndo} 
+                  className="p-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" 
+                  title="回退一步"
+                >
+                   <Undo size={20} />
                 </button>
-                <button onClick={() => reload(code)} className="toolbar-btn toolbar-btn-green" title="重置">
-                   <RotateCcw size={18} />
+                <button 
+                  onClick={() => reload(code)} 
+                  className="p-2 rounded-lg bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors" 
+                  title="重置"
+                >
+                   <RotateCcw size={20} />
                 </button>
                 
-                <div className="w-px h-6 bg-gray-300 dark:bg-neutral-700 mx-1"></div>
+                <div className="w-px h-8 bg-gray-200 dark:bg-neutral-700 mx-1"></div>
                 
-                <button onClick={exportProject} className="toolbar-btn hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-500/30" title="导出项目">
-                   <Download size={18} />
+                <button onClick={exportProject} className="p-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 transition-colors" title="导出项目">
+                   <Download size={20} />
                 </button>
-                <button onClick={() => projectImportRef.current.click()} className="toolbar-btn hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-500/30" title="导入项目">
-                   <Upload size={18} />
+                <button onClick={() => projectImportRef.current.click()} className="p-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 transition-colors" title="导入项目">
+                   <Upload size={20} />
                 </button>
                 <input 
                     type="file" 
@@ -775,14 +801,21 @@ export default function AssemblyVisualizer() {
               </div>
               
               {/* 速度控制 */}
-              <div className="speed-control-panel">
-                <Zap size={12} className="text-blue-600 dark:text-yellow-500"/>
+              <div className="flex items-center gap-2 bg-gray-100 dark:bg-neutral-800/50 p-1 rounded-lg border border-gray-200 dark:border-neutral-700">
+                <div className="px-2 text-gray-400">
+                  <Zap size={14} className="text-yellow-500"/>
+                </div>
                 <div className="flex gap-1">
                   {SPEED_OPTIONS.map(opt => (
                     <button
                       key={opt.value}
                       onClick={() => setSpeed(opt.value)}
-                      className={`speed-btn ${speed === opt.value ? 'active' : ''}`}
+                      className={`
+                        px-2 py-1 text-xs font-medium rounded transition-all
+                        ${speed === opt.value 
+                          ? 'bg-white dark:bg-neutral-700 text-blue-600 dark:text-yellow-400 shadow-sm' 
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}
+                      `}
                     >
                       {opt.label}
                     </button>
@@ -845,83 +878,73 @@ export default function AssemblyVisualizer() {
            </div>
 
            {/* Top: Registers & State */}
-           <div className="registers-panel">
-              <div className="view-mode-toolbar">
-                 <div className="flex gap-1">
-                    <button 
-                        onClick={() => setViewMode('cpu')}
-                        className={`view-mode-btn ${viewMode === 'cpu' ? 'active' : ''}`}
-                    >
-                        <Cpu size={14}/> <span className="hidden sm:inline">CPU</span>
-                    </button>
-                    <button 
-                        onClick={() => setViewMode('memory')}
-                        className={`view-mode-btn ${viewMode === 'memory' ? 'active' : ''}`}
-                    >
-                        <Activity size={14}/> <span className="hidden sm:inline">MEM</span>
-                    </button>
-                    <button 
-                        onClick={() => setViewMode('watch')}
-                        className={`view-mode-btn ${viewMode === 'watch' ? 'active' : ''}`}
-                    >
-                        <Eye size={14}/> <span className="hidden sm:inline">WATCH</span>
-                    </button>
-                    <button 
-                        onClick={() => setViewMode('stack')}
-                        className={`view-mode-btn ${viewMode === 'stack' ? 'active' : ''}`}
-                    >
-                        <Layers size={14}/> <span className="hidden sm:inline">STACK</span>
-                    </button>
-                    <button 
-                        onClick={() => setViewMode('breakpoints')}
-                        className={`view-mode-btn ${viewMode === 'breakpoints' ? 'active' : ''}`}
-                    >
-                        <Circle size={14}/> <span className="hidden sm:inline">BREAK</span>
-                    </button>
+           <div className="registers-panel glass-panel rounded-lg p-4 flex flex-col gap-4">
+              <div className="view-mode-toolbar flex justify-between items-center border-b border-gray-200 dark:border-neutral-700 pb-2">
+                 <div className="flex gap-1 bg-gray-100 dark:bg-neutral-800/50 p-1 rounded-lg">
+                    {[
+                      { id: 'cpu', icon: Cpu, label: 'CPU' },
+                      { id: 'memory', icon: Activity, label: 'MEM' },
+                      { id: 'watch', icon: Eye, label: 'WATCH' },
+                      { id: 'stack', icon: Layers, label: 'STACK' },
+                      { id: 'breakpoints', icon: Circle, label: 'BREAK' }
+                    ].map(mode => (
+                      <button 
+                          key={mode.id}
+                          onClick={() => setViewMode(mode.id)}
+                          className={`
+                            flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all
+                            ${viewMode === mode.id 
+                              ? 'bg-white dark:bg-neutral-700 text-blue-600 dark:text-yellow-400 shadow-sm' 
+                              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-neutral-700/50'}
+                          `}
+                      >
+                          <mode.icon size={14}/> <span className="hidden sm:inline">{mode.label}</span>
+                      </button>
+                    ))}
                  </div>
-                 <div className="ip-badge">
-                    IP: <span className="font-mono text-sm">{pc.toString(16).padStart(4,'0').toUpperCase()}H</span>
+                 <div className="ip-badge font-mono text-xs font-bold bg-gray-100 dark:bg-neutral-800 px-2 py-1 rounded text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-neutral-700">
+                    IP: <span className="text-blue-600 dark:text-yellow-400">{pc.toString(16).padStart(4,'0').toUpperCase()}H</span>
                  </div>
               </div>
               
               {viewMode === 'cpu' ? (
-                  <div className="space-y-4 pb-2">
+                  <div className="space-y-5 pb-2 overflow-y-auto custom-scrollbar pr-1">
                     {/* General Purpose Registers */}
-                    <div>
-                        <div className="section-title">
-                            <div className="section-dot-blue"></div> 通用寄存器
+                    <div className="animate-fade-in-up" style={{ animationDelay: '0ms' }}>
+                        <div className="text-xs font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-2 pl-1 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div> 通用寄存器
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {['AX', 'BX', 'CX', 'DX'].map(reg => <RegisterCard key={reg} name={reg} val={registers[reg]} />)}
                         </div>
                     </div>
 
                     {/* Pointers & Index Registers */}
-                    <div>
-                        <div className="section-title">
-                            <div className="section-dot-purple"></div> 指针与变址
+                    <div className="animate-fade-in-up" style={{ animationDelay: '50ms' }}>
+                        <div className="text-xs font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-2 pl-1 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div> 指针与变址
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {['SP', 'BP', 'SI', 'DI'].map(reg => <RegisterCard key={reg} name={reg} val={registers[reg]} />)}
                         </div>
                     </div>
 
                     {/* Segment Registers */}
-                    <div>
-                        <div className="text-[10px] font-bold text-gray-500 dark:text-neutral-500 uppercase tracking-widest mb-2 pl-1 flex items-center gap-2">
-                            <div className="w-1 h-1 rounded-full bg-pink-600 dark:bg-purple-500"></div> 段寄存器
+                    <div className="animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+                        <div className="text-xs font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-2 pl-1 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-pink-500"></div> 段寄存器
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {['CS', 'DS', 'SS', 'ES'].map(reg => <RegisterCard key={reg} name={reg} val={registers[reg]} />)}
                         </div>
                     </div>
 
                     {/* Flags Display */}
-                    <div className="bg-white dark:bg-neutral-900/30 rounded-lg p-3 border border-gray-200 dark:border-neutral-800">
-                        <div className="text-[10px] font-bold text-gray-500 dark:text-neutral-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-                           <Flag size={12}/> 标志寄存器 (FLAGS)
+                    <div className="bg-gray-50/50 dark:bg-neutral-900/30 rounded-xl p-4 border border-gray-200 dark:border-neutral-800 animate-fade-in-up" style={{ animationDelay: '150ms' }}>
+                        <div className="text-xs font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                           <Flag size={14}/> 标志寄存器 (FLAGS)
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap gap-2">
                             {[
                             { name: 'OF', labels: ['NV', 'OV'], desc: 'Overflow' },
                             { name: 'DF', labels: ['UP', 'DN'], desc: 'Direction' },
@@ -932,9 +955,9 @@ export default function AssemblyVisualizer() {
                             { name: 'PF', labels: ['PO', 'PE'], desc: 'Parity' },
                             { name: 'CF', labels: ['NC', 'CY'], desc: 'Carry' }
                             ].map(({ name, labels, desc }) => (
-                                <div key={name} className="flex-1 min-w-[50px] bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded p-1 flex flex-col items-center gap-0.5 hover:border-gray-300 dark:hover:border-neutral-700 transition-colors group" title={`${desc} Flag: ${flags[name]}`}>
-                                    <span className="text-[9px] text-gray-500 dark:text-neutral-600 font-bold">{name}</span>
-                                    <span className={`text-[10px] font-mono font-bold ${flags[name] ? 'text-blue-600 dark:text-yellow-500' : 'text-gray-400 dark:text-neutral-500'}`}>
+                                <div key={name} className="flex-1 min-w-[60px] bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-lg p-2 flex flex-col items-center gap-1 hover:border-blue-300 dark:hover:border-yellow-600/50 transition-all group shadow-sm" title={`${desc} Flag: ${flags[name]}`}>
+                                    <span className="text-[10px] text-gray-400 dark:text-neutral-500 font-bold">{name}</span>
+                                    <span className={`text-xs font-mono font-bold ${flags[name] ? 'text-blue-600 dark:text-yellow-400' : 'text-gray-300 dark:text-neutral-600'}`}>
                                         {labels[flags[name] || 0]}
                                     </span>
                                 </div>

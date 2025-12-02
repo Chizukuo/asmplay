@@ -261,112 +261,123 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
   };
 
   return (
-      <div className="memory-container">
+      <div className="glass-panel flex flex-col h-full overflow-hidden text-xs">
           {/* Toolbar */}
-          <div className="memory-toolbar">
-              <div className="flex items-center gap-2">
-                  <div className="text-[10px] font-semibold text-gray-600 dark:text-zinc-400 whitespace-nowrap">
-                    当前: {segment.toString(16).toUpperCase().padStart(4, '0')}:{offset.toString(16).toUpperCase().padStart(4, '0')}
-                  </div>
-                  <div className="memory-addr-group">
-                    <input 
-                        value={jumpAddr}
-                        onChange={(e) => setJumpAddr(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleJump()}
-                        placeholder="跳转到..."
-                        className="memory-input"
-                    />
-                    <button onClick={handleJump} className="text-gray-400 dark:text-zinc-600 hover:text-blue-600 dark:hover:text-amber-500 ml-1">
-                        <Search size={10} />
-                    </button>
+          <div className="flex flex-col gap-2 p-2 border-b border-gray-200/50 dark:border-white/10 bg-gray-50/50 dark:bg-white/5 backdrop-blur-sm">
+              <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 px-2 py-1 bg-white dark:bg-zinc-900 rounded border border-gray-200 dark:border-zinc-700 shadow-sm">
+                        <span className="text-[10px] font-bold text-gray-500 dark:text-zinc-500">ADDR</span>
+                        <span className="font-mono font-bold text-blue-600 dark:text-amber-500">
+                            {segment.toString(16).toUpperCase().padStart(4, '0')}:{offset.toString(16).toUpperCase().padStart(4, '0')}
+                        </span>
+                    </div>
+                    
+                    <div className="flex items-center bg-white dark:bg-zinc-900 rounded border border-gray-200 dark:border-zinc-700 overflow-hidden shadow-sm focus-within:ring-1 focus-within:ring-blue-500">
+                        <input 
+                            value={jumpAddr}
+                            onChange={(e) => setJumpAddr(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleJump()}
+                            placeholder="跳转..."
+                            className="w-16 px-1.5 py-1 text-[10px] bg-transparent outline-none font-mono text-gray-700 dark:text-zinc-200 placeholder-gray-400"
+                        />
+                        <button onClick={handleJump} className="px-1.5 py-1 hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-400 hover:text-blue-600 dark:hover:text-amber-500 border-l border-gray-200 dark:border-zinc-800 transition-colors">
+                            <Search size={10} />
+                        </button>
+                    </div>
                   </div>
                   
-                  <div className="flex gap-0.5">
-                    <button 
-                      onClick={() => setOffset(Math.max(0, offset - bytesPerRow * rowCount))} 
-                      className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors" 
-                      title="向上翻页 (Page Up)"
-                    >
-                        <ArrowRight size={10} className="rotate-180"/>
+                  <div className="flex items-center gap-1">
+                    <div className="flex bg-gray-100 dark:bg-zinc-800 rounded p-0.5">
+                        <button 
+                        onClick={() => setOffset(Math.max(0, offset - bytesPerRow * rowCount))} 
+                        className="p-1 hover:bg-white dark:hover:bg-zinc-700 rounded shadow-sm text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 transition-all" 
+                        title="向上翻页 (Page Up)"
+                        >
+                            <ArrowRight size={10} className="rotate-180"/>
+                        </button>
+                        <button 
+                        onClick={() => setOffset((offset + bytesPerRow * rowCount) & 0xFFFF)} 
+                        className="p-1 hover:bg-white dark:hover:bg-zinc-700 rounded shadow-sm text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 transition-all" 
+                        title="向下翻页 (Page Down)"
+                        >
+                            <ArrowRight size={10}/>
+                        </button>
+                    </div>
+
+                    <div className="w-px h-4 bg-gray-200 dark:bg-zinc-700 mx-1"></div>
+                    
+                    <button onClick={() => setShowSearch(!showSearch)} className={`p-1.5 rounded transition-all ${showSearch ? 'bg-blue-100 text-blue-600 dark:bg-amber-500/20 dark:text-amber-500' : 'hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-500 dark:text-zinc-500'}`} title="搜索内存">
+                        <Search size={12} />
                     </button>
+                    <button onClick={handleExport} className="p-1.5 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors" title="导出当前段 (64KB)">
+                        <Download size={12} />
+                    </button>
+                    <button onClick={() => fileInputRef.current.click()} className="p-1.5 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors" title="导入到当前位置">
+                        <Upload size={12} />
+                    </button>
+                    <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" />
+                    
                     <button 
-                      onClick={() => setOffset((offset + bytesPerRow * rowCount) & 0xFFFF)} 
-                      className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors" 
-                      title="向下翻页 (Page Down)"
+                        onClick={() => setAutoFollow(!autoFollow)}
+                        className={`p-1.5 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded transition-colors ${autoFollow ? 'text-blue-600 dark:text-amber-500 bg-blue-50 dark:bg-amber-500/10' : 'text-gray-500 dark:text-zinc-500'}`}
+                        title={autoFollow ? "关闭自动跟随DS" : "开启自动跟随DS"}
                     >
-                        <ArrowRight size={10}/>
+                        {autoFollow ? '🔒' : '🔓'}
                     </button>
                   </div>
-
-                  <div className="w-px h-3 bg-gray-300 dark:bg-zinc-700 mx-1"></div>
-                  <button onClick={() => setShowSearch(!showSearch)} className={`p-1 rounded transition-colors ${showSearch ? 'bg-blue-100 text-blue-600 dark:bg-amber-500/20 dark:text-amber-500' : 'hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-500 dark:text-zinc-500'}`} title="搜索内存">
-                      <Search size={10} />
-                  </button>
-                  <button onClick={handleExport} className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors" title="导出当前段 (64KB)">
-                      <Download size={10} />
-                  </button>
-                  <button onClick={() => fileInputRef.current.click()} className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors" title="导入到当前位置">
-                      <Upload size={10} />
-                  </button>
-                  <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" />
-                  
-                  <button 
-                    onClick={() => setAutoFollow(!autoFollow)}
-                    className={`p-1 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded text-xs transition-colors ${autoFollow ? 'text-blue-600 dark:text-amber-500 bg-blue-50 dark:bg-amber-500/10' : 'text-gray-500 dark:text-zinc-500'}`}
-                    title={autoFollow ? "关闭自动跟随DS" : "开启自动跟随DS"}
-                  >
-                    {autoFollow ? '🔒' : '🔓'}
-                  </button>
               </div>
 
-              <div className="flex gap-1 overflow-x-auto no-scrollbar">
-                  <div className="text-[9px] text-gray-500 dark:text-zinc-600 px-1 py-0.5 whitespace-nowrap">快捷跳转:</div>
-                  {['DS', 'CS', 'SS', 'ES'].map(reg => (
-                      <button 
-                        key={reg}
-                        onClick={() => jumpToRegister(reg)}
-                        className={`px-1.5 py-0.5 text-[9px] hover:bg-gray-100 dark:hover:bg-zinc-800 rounded border transition-colors font-medium ${
-                          segment === registers[reg] 
-                            ? 'bg-blue-100 dark:bg-amber-500/20 text-blue-600 dark:text-amber-500 border-blue-300 dark:border-amber-600' 
-                            : 'bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-amber-500 border-gray-200 dark:border-zinc-800'
-                        }`}
-                        title={`跳转到 ${reg}:0000 (段基址 0x${(registers[reg] << 4).toString(16).toUpperCase()})`}
-                      >
-                        {reg}
-                      </button>
-                  ))}
-                  <div className="w-px h-4 bg-gray-200 dark:bg-zinc-800 mx-0.5"></div>
-                  {['IP', 'SP'].map(reg => (
-                      <button 
-                        key={reg}
-                        onClick={() => jumpToRegister(reg)}
-                        className="px-1.5 py-0.5 text-[9px] bg-white dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-amber-500 rounded border border-gray-200 dark:border-zinc-800 transition-colors font-medium"
-                        title={reg === 'IP' ? `跳转到 CS:IP (代码指针)` : `跳转到 SS:SP (栈指针)`}
-                      >
-                        {reg}
-                      </button>
-                  ))}
-              </div>
+              <div className="flex items-center justify-between gap-2">
+                  <div className="flex gap-1 overflow-x-auto no-scrollbar items-center">
+                      <div className="text-[9px] font-bold text-gray-400 dark:text-zinc-600 px-1 whitespace-nowrap uppercase tracking-wider">Jump To:</div>
+                      {['DS', 'CS', 'SS', 'ES'].map(reg => (
+                          <button 
+                            key={reg}
+                            onClick={() => jumpToRegister(reg)}
+                            className={`px-1.5 py-0.5 text-[9px] hover:bg-gray-100 dark:hover:bg-zinc-800 rounded border transition-colors font-mono font-medium ${
+                            segment === registers[reg] 
+                                ? 'bg-blue-50 dark:bg-amber-500/10 text-blue-600 dark:text-amber-500 border-blue-200 dark:border-amber-500/30' 
+                                : 'bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-amber-500 border-gray-200 dark:border-zinc-800'
+                            }`}
+                            title={`跳转到 ${reg}:0000`}
+                          >
+                            {reg}
+                          </button>
+                      ))}
+                      <div className="w-px h-3 bg-gray-200 dark:bg-zinc-800 mx-0.5"></div>
+                      {['IP', 'SP'].map(reg => (
+                          <button 
+                            key={reg}
+                            onClick={() => jumpToRegister(reg)}
+                            className="px-1.5 py-0.5 text-[9px] bg-white dark:bg-zinc-900 hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-amber-500 rounded border border-gray-200 dark:border-zinc-800 transition-colors font-mono font-medium"
+                            title={reg === 'IP' ? `跳转到 CS:IP` : `跳转到 SS:SP`}
+                          >
+                            {reg}
+                          </button>
+                      ))}
+                  </div>
 
-              <div className="flex bg-white dark:bg-zinc-900 rounded p-0.5 border border-gray-200 dark:border-zinc-800">
-                  <button 
-                    onClick={() => setViewType('byte')} 
-                    className={`text-[9px] px-2 py-0.5 rounded transition-all ${viewType === 'byte' ? 'bg-gray-100 dark:bg-zinc-800 text-blue-600 dark:text-amber-500 shadow-sm' : 'text-gray-500 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-400'}`}
-                  >
-                    BYTE
-                  </button>
-                  <button 
-                    onClick={() => setViewType('word')} 
-                    className={`text-[9px] px-2 py-0.5 rounded transition-all ${viewType === 'word' ? 'bg-gray-100 dark:bg-zinc-800 text-blue-600 dark:text-amber-500 shadow-sm' : 'text-gray-500 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-400'}`}
-                  >
-                    WORD
-                  </button>
+                  <div className="flex bg-gray-100 dark:bg-zinc-800 rounded p-0.5">
+                      <button 
+                        onClick={() => setViewType('byte')} 
+                        className={`text-[9px] px-2 py-0.5 rounded transition-all font-medium ${viewType === 'byte' ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-amber-500 shadow-sm' : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300'}`}
+                      >
+                        BYTE
+                      </button>
+                      <button 
+                        onClick={() => setViewType('word')} 
+                        className={`text-[9px] px-2 py-0.5 rounded transition-all font-medium ${viewType === 'word' ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-amber-500 shadow-sm' : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300'}`}
+                      >
+                        WORD
+                      </button>
+                  </div>
               </div>
 
               {showSearch && (
-                  <div className="mt-2 p-2 bg-white dark:bg-zinc-900/50 rounded border border-gray-200 dark:border-zinc-800 flex flex-col gap-2 text-[10px] animate-in slide-in-from-top-1">
+                  <div className="mt-1 p-2 bg-white dark:bg-zinc-900/80 rounded border border-gray-200 dark:border-zinc-700 flex flex-col gap-2 text-[10px] animate-in slide-in-from-top-2 shadow-lg">
                       <div className="flex gap-2">
-                          <select value={searchType} onChange={(e) => setSearchType(e.target.value)} className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded px-1 py-0.5 outline-none text-gray-700 dark:text-zinc-300">
+                          <select value={searchType} onChange={(e) => setSearchType(e.target.value)} className="bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded px-1 py-0.5 outline-none text-gray-700 dark:text-zinc-300">
                               <option value="hex">Hex</option>
                               <option value="ascii">ASCII</option>
                           </select>
@@ -375,12 +386,12 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
                               onChange={(e) => setSearchTerm(e.target.value)}
                               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                               placeholder={searchType === 'hex' ? "B8 00 4C" : "Text"}
-                              className="flex-1 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded px-2 py-0.5 outline-none text-blue-600 dark:text-amber-500"
+                              className="flex-1 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded px-2 py-0.5 outline-none text-blue-600 dark:text-amber-500 font-mono"
                               autoFocus
                           />
-                          <button onClick={handleSearch} className="px-2 py-0.5 bg-blue-600 dark:bg-amber-600 text-white dark:text-black rounded hover:bg-blue-700 dark:hover:bg-amber-500">查找</button>
+                          <button onClick={handleSearch} className="px-3 py-0.5 bg-blue-600 dark:bg-amber-600 text-white dark:text-black rounded hover:bg-blue-700 dark:hover:bg-amber-500 font-medium">查找</button>
                       </div>
-                      {searchResult && <div className="text-gray-500 dark:text-zinc-400 italic flex justify-between items-center">
+                      {searchResult && <div className="text-gray-500 dark:text-zinc-400 italic flex justify-between items-center px-1">
                           <span>{searchResult}</span>
                           <button onClick={() => setSearchResult(null)} className="hover:text-red-500"><X size={10}/></button>
                       </div>}
@@ -389,19 +400,19 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
           </div>
 
           {/* Grid */}
-          <div ref={gridRef} className="memory-grid-area">
+          <div ref={gridRef} className="flex-1 overflow-hidden font-mono text-[11px] sm:text-xs leading-none select-none bg-white dark:bg-black/20">
               {rows.map(row => (
-                  <div key={row.addr} className="memory-row-item group">
+                  <div key={row.addr} className="flex hover:bg-blue-50 dark:hover:bg-white/5 transition-colors">
                       {/* Address: SEGMENT:OFFSET */}
-                      <div className="memory-addr-label">
+                      <div className="w-20 sm:w-24 px-2 py-1 text-gray-400 dark:text-zinc-600 border-r border-gray-100 dark:border-zinc-800/50 bg-gray-50/50 dark:bg-zinc-900/30 flex items-center">
                           {segment.toString(16).padStart(4, '0').toUpperCase()}:{row.addr.toString(16).padStart(4, '0').toUpperCase()}
                       </div>
                       
-                      <div className="flex-1 flex gap-3 px-2">
+                      <div className="flex-1 flex gap-2 sm:gap-3 px-2 py-1 items-center">
                           {viewType === 'byte' ? (
                               <>
                                 {/* First 8 bytes */}
-                                <div className="flex gap-1.5">
+                                <div className="flex gap-1 sm:gap-1.5">
                                     {row.bytes.slice(0, 8).map((b, idx) => {
                                         const currOffset = row.addr + idx;
                                         const currPhysAddr = row.physBase + idx;
@@ -419,18 +430,18 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
                                         
                                         if (isSP) {
                                             style = "text-red-600 dark:text-red-400 font-bold";
-                                            bgStyle = "bg-red-100 dark:bg-red-500/10 rounded-sm";
+                                            bgStyle = "bg-red-100 dark:bg-red-500/20 rounded-sm ring-1 ring-red-200 dark:ring-red-900/50";
                                         } else if (isIP) {
                                             style = "text-green-600 dark:text-green-400 font-bold";
-                                            bgStyle = "bg-green-100 dark:bg-green-500/10 rounded-sm";
+                                            bgStyle = "bg-green-100 dark:bg-green-500/20 rounded-sm ring-1 ring-green-200 dark:ring-green-900/50";
                                         } else if (b === 0) {
-                                            style = "text-gray-300 dark:text-zinc-800";
+                                            style = "text-gray-300 dark:text-zinc-700";
                                         } else {
                                             style = "text-gray-800 dark:text-zinc-300";
                                         }
                                         
                                         return (
-                                            <div key={idx} className={`w-5 text-center ${style} ${bgStyle}`} title={`Phys: 0x${(row.physBase + idx).toString(16).toUpperCase()}`}>
+                                            <div key={idx} className={`w-5 sm:w-6 text-center transition-colors ${style} ${bgStyle}`} title={`Phys: 0x${(row.physBase + idx).toString(16).toUpperCase()}`}>
                                                 {b !== null ? b.toString(16).padStart(2, '0').toUpperCase() : '..'}
                                             </div>
                                         );
@@ -438,10 +449,10 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
                                 </div>
                                 
                                 {/* Separator */}
-                                <div className="text-gray-200 dark:text-neutral-800">-</div>
+                                <div className="text-gray-200 dark:text-zinc-800 hidden sm:block">-</div>
 
                                 {/* Second 8 bytes */}
-                                <div className="flex gap-1.5">
+                                <div className="flex gap-1 sm:gap-1.5">
                                     {row.bytes.slice(8, 16).map((b, idx) => {
                                         const currOffset = row.addr + 8 + idx;
                                         const currPhysAddr = row.physBase + 8 + idx;
@@ -457,18 +468,18 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
                                         
                                         if (isSP) {
                                             style = "text-red-600 dark:text-red-400 font-bold";
-                                            bgStyle = "bg-red-100 dark:bg-red-500/10 rounded-sm";
+                                            bgStyle = "bg-red-100 dark:bg-red-500/20 rounded-sm ring-1 ring-red-200 dark:ring-red-900/50";
                                         } else if (isIP) {
                                             style = "text-green-600 dark:text-green-400 font-bold";
-                                            bgStyle = "bg-green-100 dark:bg-green-500/10 rounded-sm";
+                                            bgStyle = "bg-green-100 dark:bg-green-500/20 rounded-sm ring-1 ring-green-200 dark:ring-green-900/50";
                                         } else if (b === 0) {
-                                            style = "text-gray-300 dark:text-zinc-800";
+                                            style = "text-gray-300 dark:text-zinc-700";
                                         } else {
                                             style = "text-gray-800 dark:text-zinc-300";
                                         }
                                         
                                         return (
-                                            <div key={idx} className={`w-5 text-center ${style} ${bgStyle}`} title={`Phys: 0x${(row.physBase + 8 + idx).toString(16).toUpperCase()}`}>
+                                            <div key={idx} className={`w-5 sm:w-6 text-center transition-colors ${style} ${bgStyle}`} title={`Phys: 0x${(row.physBase + 8 + idx).toString(16).toUpperCase()}`}>
                                                 {b !== null ? b.toString(16).padStart(2, '0').toUpperCase() : '..'}
                                             </div>
                                         );
@@ -494,9 +505,9 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
 
                                       if (isSP) {
                                           style = "text-red-600 dark:text-red-400 font-bold";
-                                          bgStyle = "bg-red-100 dark:bg-red-500/10 rounded-sm";
+                                          bgStyle = "bg-red-100 dark:bg-red-500/20 rounded-sm ring-1 ring-red-200 dark:ring-red-900/50";
                                       } else if ((b1 === 0 && b2 === 0)) {
-                                          style = "text-gray-300 dark:text-zinc-800";
+                                          style = "text-gray-300 dark:text-zinc-700";
                                       } else {
                                           style = "text-gray-800 dark:text-zinc-300";
                                       }
@@ -504,7 +515,7 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
                                       const val = (b1 !== null && b2 !== null) ? (b2 << 8 | b1) : null;
 
                                       return (
-                                          <div key={i} className={`w-10 text-center ${style} ${bgStyle}`}>
+                                          <div key={i} className={`w-10 sm:w-12 text-center transition-colors ${style} ${bgStyle}`}>
                                               {val !== null ? val.toString(16).padStart(4, '0').toUpperCase() : '....'}
                                           </div>
                                       );
@@ -512,7 +523,7 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
                               </div>
                           )}
                       </div>
-                      <div className="memory-ascii-col">
+                      <div className="w-32 px-2 py-1 text-gray-400 dark:text-zinc-600 border-l border-gray-100 dark:border-zinc-800/50 tracking-widest hidden md:flex items-center">
                           {row.chars.join('')}
                       </div>
                   </div>
@@ -520,6 +531,7 @@ const MemoryView = React.memo(({ memory, setMemory, registers, sp, ds = 0 }) => 
           </div>
       </div>
   );
+
 });
 
 export default MemoryView;

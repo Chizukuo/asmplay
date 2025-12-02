@@ -9,31 +9,49 @@
   
   body {
     margin: 0;
-    @apply bg-gray-50 text-gray-900 dark:bg-[#050505] dark:text-[#e5e5e5];
-    transition: background-color 0.3s, color 0.3s;
+    @apply bg-[#f8fafc] text-slate-900 dark:bg-[#050505] dark:text-[#e5e5e5];
+    transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+                color 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+                border-color 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+                fill 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+                stroke 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* 白天模式背景 */
+  /* 白天模式背景 - 更加清透的极光色 */
   body:not(.dark) {
     background-image: 
-      radial-gradient(circle at 50% 0%, #f3f4f6 0%, transparent 70%),
-      radial-gradient(circle at 80% 10%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
+      radial-gradient(circle at 50% 0%, rgba(219, 234, 254, 0.6) 0%, transparent 70%),
+      radial-gradient(circle at 85% 10%, rgba(224, 231, 255, 0.4) 0%, transparent 50%),
+      radial-gradient(circle at 15% 20%, rgba(243, 232, 255, 0.4) 0%, transparent 50%);
+    background-attachment: fixed;
   }
 
-  /* 暗黑模式背景 */
+  /* 暗黑模式背景 - 深邃星空感 */
   .dark body {
     background-image: 
-      radial-gradient(circle at 50% 0%, #1a1a1a 0%, transparent 70%),
-      radial-gradient(circle at 80% 10%, rgba(234, 179, 8, 0.05) 0%, transparent 50%);
+      radial-gradient(circle at 50% 0%, #111111 0%, transparent 70%),
+      radial-gradient(circle at 80% 10%, rgba(234, 179, 8, 0.03) 0%, transparent 50%),
+      radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.03) 0%, transparent 50%);
     background-attachment: fixed;
   }
 }
 
 /* ===== 响应式断点与缩放优化 ===== */
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .glass-effect {
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* 移动端优化：增加触摸区域 */
+  button, .clickable {
+    min-height: 32px; 
+    min-width: 32px;
+  }
+  
+  /* 移动端字体优化 */
+  .font-mono {
+    font-size: 0.9em; 
   }
 
   /* 小屏适配：整体缩放并增加内边距，避免溢出 */
@@ -71,6 +89,26 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* ===== 滚动条美化 ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-zinc-700 rounded-full;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-zinc-600;
+}
+
 /* ===== 动画效果 ===== */
 @keyframes scanline {
   0% { transform: translateY(-100%); }
@@ -92,10 +130,28 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out forwards;
+}
+
 .crt-overlay {
   background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
   background-size: 100% 2px, 3px 100%;
   pointer-events: none;
+}
+
+/* 玻璃拟态增强 */
+.glass-panel {
+  @apply bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border border-gray-200 dark:border-zinc-800 shadow-lg;
+}
+
+.glass-button {
+  @apply hover:bg-gray-100/50 dark:hover:bg-zinc-800/50 transition-all duration-200 active:scale-95;
 }
 
 .crt-scanline {
@@ -548,176 +604,15 @@ textarea.custom-scrollbar, .editor-textarea { cursor: text; }
     @apply text-red-400 hover:text-red-600 dark:hover:text-red-200 transition-colors;
   }
 
-  /* ===== Call Stack Component ===== */
-  .call-stack-container {
-    @apply flex flex-col h-full bg-white dark:bg-[#0a0a0a] rounded-lg border border-gray-200 dark:border-neutral-800 overflow-hidden;
-  }
-  
-  .call-stack-header {
-    @apply flex items-center gap-2 p-2 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-900/50 text-gray-500 dark:text-neutral-400 font-bold text-xs;
-  }
-
-  .call-stack-list {
-    @apply flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar;
-  }
-
-  .call-stack-empty {
-    @apply flex flex-col items-center justify-center h-full text-gray-400 dark:text-neutral-700 gap-2;
-  }
-
-  .call-stack-item {
-    @apply bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded p-2 flex items-center justify-between hover:border-blue-300 dark:hover:border-yellow-500/30 transition-colors;
-  }
-
-  .call-stack-index {
-    @apply w-4 h-4 rounded bg-gray-200 dark:bg-neutral-800 flex items-center justify-center text-[9px] text-gray-500 dark:text-neutral-500 font-mono;
-  }
-
-  .call-stack-func-name {
-    @apply text-blue-600 dark:text-yellow-500 font-bold text-xs font-mono;
-  }
-
-  .call-stack-ret {
-    @apply text-[9px] text-gray-400 dark:text-neutral-500;
-  }
-
-  .call-stack-sp {
-    @apply text-[9px] font-mono text-gray-500 dark:text-neutral-500 bg-white dark:bg-black/40 px-1.5 py-0.5 rounded border border-gray-200 dark:border-neutral-800;
-  }
-
-  /* ===== Register Card Component ===== */
-  .register-card {
-    @apply relative overflow-hidden rounded-lg border transition-all duration-200;
-  }
-  
-  .register-card.active {
-    @apply bg-blue-50 dark:bg-yellow-500/10 border-blue-200 dark:border-yellow-500/40 shadow-[0_0_15px_rgba(59,130,246,0.1)] dark:shadow-[0_0_15px_rgba(234,179,8,0.1)];
-  }
-  
-  .register-card.inactive {
-    @apply bg-white dark:bg-neutral-900/40 border-gray-200 dark:border-neutral-800 hover:border-gray-300 dark:hover:border-neutral-700;
-  }
-
-  .register-card-name {
-    @apply text-[10px] font-bold tracking-wider;
-  }
-  
-  .register-card-name.active {
-    @apply text-blue-600 dark:text-yellow-400;
-  }
-  
-  .register-card-name.inactive {
-    @apply text-gray-500 dark:text-neutral-500;
-  }
-
-  .register-card-value {
-    @apply font-mono text-xl font-bold tracking-tight transition-all;
-  }
-  
-  .register-card-value.active {
-    @apply text-blue-800 dark:text-yellow-100;
-  }
-  
-  .register-card-value.inactive {
-    @apply text-gray-700 dark:text-neutral-300;
-  }
-
-  /* ===== Memory View Component ===== */
-  .memory-container {
-    @apply flex flex-col h-full bg-white dark:bg-[#0a0a0a] rounded-lg border border-gray-200 dark:border-neutral-800 overflow-hidden font-mono;
-  }
-
-  .memory-toolbar {
-    @apply flex flex-wrap gap-2 p-2 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-900/50 items-center justify-between shrink-0;
-  }
-
-  .memory-addr-group {
-    @apply flex items-center bg-white dark:bg-neutral-900 rounded px-2 py-1 border border-gray-200 dark:border-neutral-800 w-28 focus-within:border-blue-400 dark:focus-within:border-yellow-500/50 transition-colors;
-  }
-
-  .memory-input {
-    @apply bg-transparent border-none outline-none text-blue-600 dark:text-yellow-500 font-mono text-[10px] w-full placeholder-gray-400 dark:placeholder-neutral-700 text-center;
-  }
-
-  .memory-grid-area {
-    @apply flex-1 overflow-hidden p-2 font-mono text-[11px] bg-white dark:bg-[#050505] text-gray-500 dark:text-neutral-400 selection:bg-blue-100 dark:selection:bg-yellow-900/30 selection:text-blue-900 dark:selection:text-yellow-100;
-  }
-
-  .memory-row-item {
-    @apply flex hover:bg-gray-50 dark:hover:bg-neutral-900/50 transition-colors leading-relaxed h-[22px] items-center;
-  }
-
-  .memory-addr-label {
-    @apply w-24 text-gray-400 dark:text-neutral-600 shrink-0 select-all cursor-text transition-colors;
-  }
-
-  .memory-ascii-col {
-    @apply w-32 text-gray-400 dark:text-neutral-600 tracking-widest border-l border-gray-200 dark:border-neutral-800 pl-3 font-sans opacity-60 transition-opacity;
-  }
-
-  /* group-hover replacements for memory row */
-  .memory-row-item.group:hover .memory-addr-label {
-    @apply text-gray-600;
-  }
-  .dark .memory-row-item.group:hover .memory-addr-label {
-    @apply text-neutral-500;
-  }
-
-  .memory-row-item.group:hover .memory-ascii-col {
-    @apply opacity-100 text-gray-600;
-  }
-  .dark .memory-row-item.group:hover .memory-ascii-col {
-    @apply opacity-100 text-neutral-400;
-  }
-
-  /* ===== Watch Window Component ===== */
-  .watch-window-container {
-    @apply flex flex-col h-full bg-white dark:bg-[#0a0a0a] rounded-lg border border-gray-200 dark:border-neutral-800 overflow-hidden;
-  }
-
-  .watch-window-header {
-    @apply flex items-center justify-between p-2 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-900/50;
-  }
-
-  .watch-window-title {
-    @apply flex items-center gap-2 text-gray-500 dark:text-neutral-400 font-bold text-xs;
-  }
-
-  .watch-add-toggle {
-    @apply p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors;
-  }
-  
-  .watch-add-toggle.active {
-    @apply text-blue-600 dark:text-yellow-500 bg-gray-200 dark:bg-neutral-800;
-  }
-  
-  .watch-add-toggle.inactive {
-    @apply text-gray-400 dark:text-neutral-500;
-  }
-
-  .watch-add-panel {
-    @apply p-2 bg-gray-50 dark:bg-neutral-900/30 border-b border-gray-200 dark:border-neutral-800 flex gap-2;
-  }
-
-  .watch-add-input {
-    @apply flex-1 bg-white dark:bg-black border border-gray-300 dark:border-neutral-800 rounded px-2 py-1 text-xs text-blue-600 dark:text-yellow-500 outline-none focus:border-blue-400 dark:focus:border-yellow-500/50;
-  }
-
-  .watch-add-confirm {
-    @apply px-3 py-1 bg-blue-600 dark:bg-yellow-600 hover:bg-blue-700 dark:hover:bg-yellow-500 text-white dark:text-black rounded text-xs font-bold transition-colors;
-  }
-
-  .watch-list-container {
-    @apply flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar;
-  }
-
-  .watch-list-item {
-    @apply bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded p-2 flex items-center justify-between hover:border-blue-300 dark:hover:border-yellow-500/30 transition-colors;
-  }
-
   /* ===== App Layout Components ===== */
   .registers-panel {
-    @apply h-[40%] lg:h-[45%] border-b border-gray-200 dark:border-neutral-800 p-3 sm:p-4 flex flex-col gap-3 overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-[#050505];
+    @apply h-[40%] lg:h-[40%] border-b border-gray-200 dark:border-neutral-800 p-3 sm:p-4 flex flex-col gap-3 overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-[#050505];
+  }
+  
+  @media (min-height: 900px) and (min-width: 1024px) {
+    .registers-panel {
+      height: 45%;
+    }
   }
 
   .view-mode-toolbar {
