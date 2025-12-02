@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MEMORY_SIZE, INSTRUCTION_DELAY, SCREEN_ROWS, SCREEN_COLS, PRESET_PROGRAMS, VIDEO_MEMORY_SIZE } from '../constants';
 import { parseCode } from '../utils/assembler';
 import { executeCpuInstruction } from '../utils/cpu';
+import { evaluateCondition } from '../utils/conditionEvaluator';
 import { handleDosInterrupt, handleBiosInterrupt, handleKeyboardInterrupt, handleTimeInterrupt } from '../utils/interrupts';
 import { clearVideoMemory, writeCharToVideoMemory, scrollUp } from '../utils/displayUtils';
 
@@ -34,13 +35,36 @@ export const useAssembler = () => {
   const [cursor, setCursor] = useState({ r: 0, c: 0 });
   const [speed, setSpeed] = useState(INSTRUCTION_DELAY);
   const [isWaitingForInput, setIsWaitingForInput] = useState(false);
-  const [breakpoints, setBreakpoints] = useState(new Set());
-  const [watchVariables, setWatchVariables] = useState([]);
+  // Breakpoints: Object { [lineIndex]: { type: 'NORMAL'|'CONDITIONAL', condition: string, enabled: boolean } }
+  const [breakpoints, setBreakpoints] = useState(() => {
+    try {
+      const saved = localStorage.getItem('asm_breakpoints');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) { return {}; }
+  }); 
+  // Data Breakpoints: Array { address: number, type: 'WRITE'|'READ'|'ACCESS', enabled: boolean }
+  const [dataBreakpoints, setDataBreakpoints] = useState(() => {
+    try {
+      const saved = localStorage.getItem('asm_dataBreakpoints');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
+  const [watchVariables, setWatchVariables] = useState(() => {
+    try {
+      const saved = localStorage.getItem('asm_watchVariables');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
   const [callStack, setCallStack] = useState([]);
   const [keyBuffer, setKeyBuffer] = useState([]);
   const keyBufferRef = useRef([]); // Ref for immediate access in loop
   const [lastKeyPressed, setLastKeyPressed] = useState(null);
   
+  // History for Undo
+  const historyRef = useRef([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const MAX_HISTORY = 100;
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState(null);
   const [parsedInstructions, setParsedInstructions] = useState([]);
@@ -48,6 +72,16 @@ export const useAssembler = () => {
 
   const intervalRef = useRef(null);
   const initialCodeRef = useRef(code);
+  const breakpointsRef = useRef({});
+  const dataBreakpointsRef = useRef([]);
+
+  useEffect(() => {
+    breakpointsRef.current = breakpoints;
+  }, [breakpoints]);
+
+  useEffect(() => {
+    dataBreakpointsRef.current = dataBreakpoints;
+  }, [dataBreakpoints]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -55,6 +89,18 @@ export const useAssembler = () => {
     }, 1000);
     return () => clearTimeout(timer);
   }, [code]);
+
+  useEffect(() => {
+    localStorage.setItem('asm_breakpoints', JSON.stringify(breakpoints));
+  }, [breakpoints]);
+
+  useEffect(() => {
+    localStorage.setItem('asm_dataBreakpoints', JSON.stringify(dataBreakpoints));
+  }, [dataBreakpoints]);
+
+  useEffect(() => {
+    localStorage.setItem('asm_watchVariables', JSON.stringify(watchVariables));
+  }, [watchVariables]);
 
   // Sync keyBuffer state to ref (though we mainly push to ref directly)
   useEffect(() => {
@@ -135,6 +181,24 @@ export const useAssembler = () => {
         }
 
         const instruction = parsedInstructions[currentPc];
+        
+        // Record History (Only in single step or slow mode)
+        if (BATCH_SIZE === 1) {
+            if (historyRef.current.length >= MAX_HISTORY) {
+                historyRef.current.shift();
+            }
+            historyRef.current.push({
+                registers: { ...newRegisters },
+                flags: { ...newFlags },
+                memory: new Uint8Array(newMemory), // Snapshot
+                pc: currentPc,
+                callStack: [...newCallStack],
+                cursor: { ...newCursor },
+                screenCols: currentScreenCols,
+                keyBuffer: [...keyBufferRef.current]
+            });
+            setCanUndo(true);
+        }
         
         try {
             // Execute instruction using the new CPU module
@@ -277,11 +341,46 @@ export const useAssembler = () => {
                 newRegisters.IP = 0;
             }
 
-            // 检查断点
-            if (tempNext < parsedInstructions.length && breakpoints.has(parsedInstructions[tempNext].originalIndex)) {
-                setIsPlaying(false);
-                if (isLightSpeed) clearInterval(intervalRef.current);
-                break;
+            // 检查数据断点
+            const currentDataBreakpoints = dataBreakpointsRef.current;
+            if (result.memoryWrites && result.memoryWrites.length > 0 && currentDataBreakpoints.length > 0) {
+                let dataBreakTriggered = false;
+                for (const write of result.memoryWrites) {
+                    for (const dbp of currentDataBreakpoints) {
+                        // 简单匹配：如果写入地址等于断点地址
+                        // 未来可以扩展为范围匹配或读写类型匹配
+                        if (dbp.enabled && dbp.address === write.address) {
+                             dataBreakTriggered = true;
+                             break;
+                        }
+                    }
+                    if (dataBreakTriggered) break;
+                }
+                if (dataBreakTriggered) {
+                    setIsPlaying(false);
+                    if (isLightSpeed) clearInterval(intervalRef.current);
+                    break;
+                }
+            }
+
+            // 检查代码断点
+            if (tempNext < parsedInstructions.length) {
+                const nextLineIndex = parsedInstructions[tempNext].originalIndex;
+                const bp = breakpointsRef.current[nextLineIndex];
+                if (bp && bp.enabled) {
+                    let shouldBreak = false;
+                    if (bp.type === 'NORMAL') {
+                        shouldBreak = true;
+                    } else if (bp.type === 'CONDITIONAL') {
+                        shouldBreak = evaluateCondition(bp.condition, newRegisters, newFlags);
+                    }
+                    
+                    if (shouldBreak) {
+                        setIsPlaying(false);
+                        if (isLightSpeed) clearInterval(intervalRef.current);
+                        break;
+                    }
+                }
             }
 
             if (interruptOccurred && !isLightSpeed) break; 
@@ -315,9 +414,42 @@ export const useAssembler = () => {
 
   }, [pc, parsedInstructions, registers, memory, flags, cursor, videoMemory, symbolTable, labelMap, segmentTable, speed, isWaitingForInput, isPlaying, callStack, keyBuffer, breakpoints]);
 
+  const stepBack = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+
+    const lastState = historyRef.current.pop();
+    setCanUndo(historyRef.current.length > 0);
+
+    setRegisters(lastState.registers);
+    setFlags(lastState.flags);
+    setMemory(lastState.memory);
+    setPc(lastState.pc);
+    setCallStack(lastState.callStack);
+    setCursor(lastState.cursor);
+    
+    // Restore Video Memory View
+    const VIDEO_MEMORY_START = 0xB8000;
+    const videoRam = lastState.memory.subarray(VIDEO_MEMORY_START, VIDEO_MEMORY_START + VIDEO_MEMORY_SIZE);
+    setVideoMemory(new Uint8Array(videoRam));
+
+    // Also restore screenCols if we saved it, or just keep current?
+    // Ideally we should save screenCols too.
+    if (lastState.screenCols) setScreenCols(lastState.screenCols);
+    
+    if (lastState.keyBuffer) {
+        setKeyBuffer(lastState.keyBuffer);
+        keyBufferRef.current = lastState.keyBuffer;
+    }
+
+  }, []);
+
   const reload = useCallback((newCode) => {
     setCode(newCode);
     initialCodeRef.current = newCode;
+
+    // Clear history
+    historyRef.current = [];
+    setCanUndo(false);
 
     // 强制重新解析以重置内存（即使代码未变）
     const { newMemory, dataMap, labelMap: lMap, instructions, instructionAddresses: iAddrs, segmentNames } = parseCode(newCode);
@@ -348,7 +480,8 @@ export const useAssembler = () => {
     setCallStack([]);
     setIsPlaying(false);
     setError(null);
-    setBreakpoints(new Set());
+    setBreakpoints({});
+    setDataBreakpoints([]);
     setKeyBuffer([]);
     keyBufferRef.current = []; // Reset ref
     setLastKeyPressed(null);
@@ -408,16 +541,60 @@ export const useAssembler = () => {
     return () => clearInterval(intervalRef.current);
   }, [isPlaying, executeStep, speed]);
 
-  const toggleBreakpoint = useCallback((lineIndex) => {
+  const toggleBreakpoint = useCallback((lineIndex, options = {}) => {
     setBreakpoints(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(lineIndex)) {
-        newSet.delete(lineIndex);
+      const newBreakpoints = { ...prev };
+      if (newBreakpoints[lineIndex]) {
+        delete newBreakpoints[lineIndex];
       } else {
-        newSet.add(lineIndex);
+        newBreakpoints[lineIndex] = {
+            type: options.type || 'NORMAL',
+            condition: options.condition || '',
+            enabled: true,
+            line: lineIndex
+        };
       }
-      return newSet;
+      return newBreakpoints;
     });
+  }, []);
+
+  const addBreakpoint = useCallback((lineIndex, type = 'NORMAL', condition = '') => {
+      setBreakpoints(prev => ({
+          ...prev,
+          [lineIndex]: { type, condition, enabled: true, line: lineIndex }
+      }));
+  }, []);
+
+  const removeBreakpoint = useCallback((lineIndex) => {
+      setBreakpoints(prev => {
+          const next = { ...prev };
+          delete next[lineIndex];
+          return next;
+      });
+  }, []);
+
+  const updateBreakpoint = useCallback((lineIndex, updates) => {
+      setBreakpoints(prev => {
+          if (!prev[lineIndex]) return prev;
+          return {
+              ...prev,
+              [lineIndex]: { ...prev[lineIndex], ...updates }
+          };
+      });
+  }, []);
+
+  const addDataBreakpoint = useCallback((address, type = 'WRITE') => {
+      setDataBreakpoints(prev => [...prev, { address, type, enabled: true }]);
+  }, []);
+
+  const removeDataBreakpoint = useCallback((index) => {
+      setDataBreakpoints(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const toggleDataBreakpoint = useCallback((index) => {
+      setDataBreakpoints(prev => prev.map((bp, i) => 
+          i === index ? { ...bp, enabled: !bp.enabled } : bp
+      ));
   }, []);
 
   const addWatchVariable = useCallback((varName) => {
@@ -430,12 +607,67 @@ export const useAssembler = () => {
     setWatchVariables(prev => prev.filter(v => v !== varName));
   }, []);
 
+  const exportProject = useCallback(() => {
+      const project = {
+          version: '1.0',
+          timestamp: Date.now(),
+          code,
+          breakpoints,
+          dataBreakpoints,
+          watchVariables
+      };
+      const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `asmplay_project_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+  }, [code, breakpoints, dataBreakpoints, watchVariables]);
+
+  const importProject = useCallback((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const project = JSON.parse(e.target.result);
+              if (project.code) {
+                  setCode(project.code);
+                  initialCodeRef.current = project.code;
+              }
+              if (project.breakpoints) setBreakpoints(project.breakpoints);
+              if (project.dataBreakpoints) setDataBreakpoints(project.dataBreakpoints);
+              if (project.watchVariables) setWatchVariables(project.watchVariables);
+              
+              // Reset execution state
+              setPc(0);
+              setRegisters({ 
+                AX: 0, BX: 0, CX: 0, DX: 0, 
+                SP: 0x0800, BP: 0, SI: 0, DI: 0,
+                CS: 0x04B0, DS: 0x04E0, SS: 0x0500, ES: 0x04E0, IP: 0
+              });
+              setFlags({ ZF: 0, SF: 0, CF: 0, OF: 0, PF: 0, AF: 0, TF: 0, IF: 1, DF: 0 });
+              setCallStack([]);
+              setIsPlaying(false);
+              setError(null);
+              historyRef.current = [];
+              setCanUndo(false);
+              
+          } catch (err) {
+              console.error("Import failed", err);
+              setError("导入失败: 文件格式错误");
+          }
+      };
+      reader.readAsText(file);
+  }, []);
+
   return {
     code, setCode,
+    exportProject,
+    importProject,
     pc,
     registers,
     flags,
-    memory,
+    memory, setMemory,
     symbolTable,
     videoMemory,
     screenCols,
@@ -446,11 +678,20 @@ export const useAssembler = () => {
     parsedInstructions,
     instructionAddresses,
     executeStep,
+    stepBack,
+    canUndo,
     reload,
     handleInput,
     isWaitingForInput,
     breakpoints,
+    dataBreakpoints,
     toggleBreakpoint,
+    addBreakpoint,
+    removeBreakpoint,
+    updateBreakpoint,
+    addDataBreakpoint,
+    removeDataBreakpoint,
+    toggleDataBreakpoint,
     watchVariables,
     addWatchVariable,
     removeWatchVariable,

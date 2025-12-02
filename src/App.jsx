@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Pause, StepForward, RotateCcw, Cpu, Terminal, FileCode, Activity, Save, Plus, FolderOpen, Zap, Flag, Download, Upload, Circle, Eye, AlertCircle, List, Layout, Monitor as MonitorIcon, Layers, Sun, Moon } from 'lucide-react';
+import { Play, Pause, StepForward, RotateCcw, Cpu, Terminal, FileCode, Activity, Save, Plus, FolderOpen, Zap, Flag, Download, Upload, Circle, Eye, AlertCircle, List, Layout, Monitor as MonitorIcon, Layers, Sun, Moon, Undo, Search, Replace, X, ArrowUp, ArrowDown, Check, Hash } from 'lucide-react';
 import { PRESET_PROGRAMS, SCREEN_ROWS, SCREEN_COLS, SPEED_OPTIONS } from './constants';
 import { useAssembler } from './hooks/useAssembler';
 import RegisterCard from './components/RegisterCard';
@@ -9,6 +9,7 @@ import CallStack from './components/CallStack';
 import AutoResizingContainer from './components/AutoResizingContainer';
 import Monitor from './components/Monitor';
 import ExamplesModal from './components/ExamplesModal';
+import BreakpointsPanel from './components/BreakpointsPanel';
 import { highlightLine } from './utils/highlightLine';
 
 
@@ -25,12 +26,21 @@ export default function AssemblyVisualizer() {
     speed, setSpeed,
     parsedInstructions,
     executeStep,
+    stepBack,
+    canUndo,
     reload,
     handleInput,
     isWaitingForInput,
-    memory, // Need memory for MemoryView
+    memory, setMemory, // Need memory for MemoryView
     breakpoints,
+    dataBreakpoints,
     toggleBreakpoint,
+    addBreakpoint,
+    removeBreakpoint,
+    updateBreakpoint,
+    addDataBreakpoint,
+    removeDataBreakpoint,
+    toggleDataBreakpoint,
     watchVariables,
     addWatchVariable,
     removeWatchVariable,
@@ -41,7 +51,9 @@ export default function AssemblyVisualizer() {
     keyBuffer,
     simulateKeyPress,
     consumeKey,
-    lastKeyPressed
+    lastKeyPressed,
+    exportProject,
+    importProject
   } = useAssembler();
 
 
@@ -111,15 +123,200 @@ export default function AssemblyVisualizer() {
   const [cursorPosition, setCursorPosition] = useState({ top: 0, left: 0 });
 
   const fileInputRef = useRef(null);
+  const projectImportRef = useRef(null);
   const editorRef = useRef(null);
   const highlightRef = useRef(null);
   const lineNumbersRef = useRef(null);
   const highlightInnerRef = useRef(null);
   const lineNumbersInnerRef = useRef(null);
 
+  // Editor Search & Replace State
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [searchMode, setSearchMode] = useState('find'); // 'find', 'replace', 'goto'
+  const [searchText, setSearchText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [searchMatches, setSearchMatches] = useState([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
+  const [goToLineNumber, setGoToLineNumber] = useState('');
+
+  const handleProjectImport = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+        importProject(file);
+    }
+    e.target.value = null;
+  };
+
+  // --- Editor Helper Functions ---
+
+  const performSearch = (text) => {
+    if (!text) {
+      setSearchMatches([]);
+      setCurrentMatchIndex(-1);
+      return;
+    }
+    const matches = [];
+    let pos = code.indexOf(text);
+    while (pos !== -1) {
+      matches.push(pos);
+      pos = code.indexOf(text, pos + 1);
+    }
+    setSearchMatches(matches);
+    if (matches.length > 0) {
+      // Find the match closest to current cursor or just the first one
+      const cursor = editorRef.current ? editorRef.current.selectionStart : 0;
+      let nextMatchIdx = matches.findIndex(m => m >= cursor);
+      if (nextMatchIdx === -1) nextMatchIdx = 0;
+      setCurrentMatchIndex(nextMatchIdx);
+      navigateToMatch(matches[nextMatchIdx], text.length);
+    } else {
+      setCurrentMatchIndex(-1);
+    }
+  };
+
+  const navigateToMatch = (index, length) => {
+    if (editorRef.current && index !== -1) {
+      editorRef.current.focus();
+      editorRef.current.setSelectionRange(index, index + length);
+      
+      // Scroll to view
+      const textBefore = code.substring(0, index);
+      const lineIndex = textBefore.split('\n').length - 1;
+      const lineHeight = 24;
+      const editorHeight = editorRef.current.clientHeight;
+      const scrollTop = lineIndex * lineHeight - editorHeight / 2;
+      editorRef.current.scrollTop = Math.max(0, scrollTop);
+    }
+  };
+
+  const handleNextMatch = () => {
+    if (searchMatches.length === 0) return;
+    const nextIdx = (currentMatchIndex + 1) % searchMatches.length;
+    setCurrentMatchIndex(nextIdx);
+    navigateToMatch(searchMatches[nextIdx], searchText.length);
+  };
+
+  const handlePrevMatch = () => {
+    if (searchMatches.length === 0) return;
+    const prevIdx = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+    setCurrentMatchIndex(prevIdx);
+    navigateToMatch(searchMatches[prevIdx], searchText.length);
+  };
+
+  const handleReplace = () => {
+    if (currentMatchIndex === -1 || searchMatches.length === 0) return;
+    const matchPos = searchMatches[currentMatchIndex];
+    const newCode = code.substring(0, matchPos) + replaceText + code.substring(matchPos + searchText.length);
+    setCode(newCode);
+    // Re-search after replace
+    // We need to wait for state update or pass newCode
+    setTimeout(() => performSearch(searchText), 0);
+  };
+
+  const handleReplaceAll = () => {
+    if (!searchText) return;
+    const newCode = code.split(searchText).join(replaceText);
+    setCode(newCode);
+    setSearchMatches([]);
+    setCurrentMatchIndex(-1);
+  };
+
+  const handleGoToLine = () => {
+    const line = parseInt(goToLineNumber);
+    if (!isNaN(line) && line > 0) {
+      const lines = code.split('\n');
+      const targetLineIndex = Math.min(line, lines.length) - 1;
+      
+      // Calculate position
+      let pos = 0;
+      for (let i = 0; i < targetLineIndex; i++) {
+        pos += lines[i].length + 1; // +1 for \n
+      }
+      
+      if (editorRef.current) {
+        editorRef.current.focus();
+        editorRef.current.setSelectionRange(pos, pos);
+        const lineHeight = 24;
+        const editorHeight = editorRef.current.clientHeight;
+        editorRef.current.scrollTop = Math.max(0, targetLineIndex * lineHeight - editorHeight / 2);
+      }
+      setShowSearchPanel(false);
+    }
+  };
+
+  const toggleComment = () => {
+    const textarea = editorRef.current;
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const val = textarea.value;
+    
+    // Find start and end lines
+    const startLineIndex = val.substring(0, start).split('\n').length - 1;
+    const endLineIndex = val.substring(0, end).split('\n').length - 1;
+    
+    const lines = val.split('\n');
+    const selectedLines = lines.slice(startLineIndex, endLineIndex + 1);
+    
+    // Check if all selected lines are commented
+    const allCommented = selectedLines.every(line => line.trim().startsWith(';'));
+    
+    const newLines = lines.map((line, idx) => {
+      if (idx >= startLineIndex && idx <= endLineIndex) {
+        if (allCommented) {
+          // Uncomment: remove first ;
+          return line.replace(';', '').replace(/^ /, ''); // Remove optional space after ;
+        } else {
+          // Comment: add ;
+          return '; ' + line;
+        }
+      }
+      return line;
+    });
+    
+    const newCode = newLines.join('\n');
+    setCode(newCode);
+    
+    // Restore selection (approximate)
+    setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start, end); // Selection might drift, but good enough for now
+    }, 0);
+  };
+
   // 自动补全逻辑
   const handleEditorKeyDown = (e) => {
     // 快捷键
+    if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'f') {
+            e.preventDefault();
+            setShowSearchPanel(true);
+            setSearchMode('find');
+            // Use current selection as search text if any
+            const selection = window.getSelection().toString();
+            if (selection && !selection.includes('\n')) {
+                setSearchText(selection);
+                performSearch(selection);
+            }
+            return;
+        } else if (e.key === 'h') {
+            e.preventDefault();
+            setShowSearchPanel(true);
+            setSearchMode('replace');
+            return;
+        } else if (e.key === 'g') {
+            e.preventDefault();
+            setShowSearchPanel(true);
+            setSearchMode('goto');
+            return;
+        } else if (e.key === '/') {
+            e.preventDefault();
+            toggleComment();
+            return;
+        }
+    }
+
     if (e.key === 'F5') {
       e.preventDefault();
       handlePlayPause();
@@ -344,7 +541,7 @@ export default function AssemblyVisualizer() {
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
         
         {/* Left: Code Editor */}
-        <div className={`panel-left ${mobileTab === 'editor' ? 'h-full absolute inset-0 z-10 lg:static lg:h-auto' : 'hidden lg:flex'}`}>
+        <div className={`panel-left ${mobileTab === 'editor' ? 'h-full absolute inset-0 z-10 lg:relative lg:h-auto' : 'hidden lg:flex'}`}>
            <div className="editor-header-bar">
               <span className="flex items-center gap-2">
                 <FileCode size={14} className="text-yellow-400"/> 
@@ -373,12 +570,98 @@ export default function AssemblyVisualizer() {
               </span>
            </div>
            
+           {/* Search/Replace/GoTo Panel */}
+           {showSearchPanel && (
+             <div className="absolute top-10 right-4 z-50 w-80 bg-white dark:bg-neutral-800 shadow-xl border border-gray-200 dark:border-neutral-700 rounded-lg p-3 animate-in slide-in-from-top-2">
+               <div className="flex justify-between items-center mb-2">
+                 <div className="flex gap-2 text-xs font-bold text-gray-500 dark:text-neutral-400">
+                   <button onClick={() => setSearchMode('find')} className={`px-2 py-1 rounded ${searchMode === 'find' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'hover:bg-gray-100 dark:hover:bg-neutral-700'}`}>查找</button>
+                   <button onClick={() => setSearchMode('replace')} className={`px-2 py-1 rounded ${searchMode === 'replace' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'hover:bg-gray-100 dark:hover:bg-neutral-700'}`}>替换</button>
+                   <button onClick={() => setSearchMode('goto')} className={`px-2 py-1 rounded ${searchMode === 'goto' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'hover:bg-gray-100 dark:hover:bg-neutral-700'}`}>跳转</button>
+                 </div>
+                 <button onClick={() => setShowSearchPanel(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-300">
+                   <X size={14} />
+                 </button>
+               </div>
+
+               {searchMode === 'goto' ? (
+                 <div className="flex gap-2">
+                   <input 
+                     type="number" 
+                     value={goToLineNumber}
+                     onChange={(e) => setGoToLineNumber(e.target.value)}
+                     onKeyDown={(e) => e.key === 'Enter' && handleGoToLine()}
+                     placeholder="行号..."
+                     className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-neutral-600 rounded bg-transparent dark:text-white focus:outline-none focus:border-blue-500"
+                     autoFocus
+                   />
+                   <button onClick={handleGoToLine} className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+                     跳转
+                   </button>
+                 </div>
+               ) : (
+                 <div className="flex flex-col gap-2">
+                   <div className="relative">
+                     <input 
+                       type="text" 
+                       value={searchText}
+                       onChange={(e) => {
+                         setSearchText(e.target.value);
+                         performSearch(e.target.value);
+                       }}
+                       onKeyDown={(e) => {
+                         if (e.key === 'Enter') {
+                           if (e.shiftKey) handlePrevMatch();
+                           else handleNextMatch();
+                         }
+                       }}
+                       placeholder="查找..."
+                       className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-neutral-600 rounded bg-transparent dark:text-white focus:outline-none focus:border-blue-500 pr-16"
+                       autoFocus
+                     />
+                     <div className="absolute right-1 top-1 flex items-center gap-1">
+                       <span className="text-xs text-gray-400">
+                         {searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}
+                       </span>
+                       <button onClick={handlePrevMatch} className="p-0.5 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded text-gray-500">
+                         <ArrowUp size={12} />
+                       </button>
+                       <button onClick={handleNextMatch} className="p-0.5 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded text-gray-500">
+                         <ArrowDown size={12} />
+                       </button>
+                     </div>
+                   </div>
+                   
+                   {searchMode === 'replace' && (
+                     <div className="flex gap-2">
+                       <input 
+                         type="text" 
+                         value={replaceText}
+                         onChange={(e) => setReplaceText(e.target.value)}
+                         onKeyDown={(e) => e.key === 'Enter' && handleReplace()}
+                         placeholder="替换为..."
+                         className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-neutral-600 rounded bg-transparent dark:text-white focus:outline-none focus:border-blue-500"
+                       />
+                       <button onClick={handleReplace} className="p-1.5 bg-gray-100 dark:bg-neutral-700 text-gray-600 dark:text-neutral-300 rounded hover:bg-gray-200 dark:hover:bg-neutral-600" title="替换当前">
+                         <Check size={14} />
+                       </button>
+                       <button onClick={handleReplaceAll} className="p-1.5 bg-gray-100 dark:bg-neutral-700 text-gray-600 dark:text-neutral-300 rounded hover:bg-gray-200 dark:hover:bg-neutral-600" title="全部替换">
+                         <Replace size={14} />
+                       </button>
+                     </div>
+                   )}
+                 </div>
+               )}
+             </div>
+           )}
+
            <div className="flex-1 relative overflow-hidden flex">
                 {/* Line Numbers with Breakpoints */}
                   <div ref={lineNumbersRef} className="line-numbers-col">
                    <div ref={lineNumbersInnerRef}>
                     {code.split('\n').map((_, i) => {
-                      const hasBreakpoint = breakpoints.has(i);
+                      const bp = breakpoints[i];
+                      const hasBreakpoint = !!bp;
                       return (
                         <div 
                           key={i} 
@@ -390,7 +673,7 @@ export default function AssemblyVisualizer() {
                             {hasBreakpoint ? '✖' : '●'}
                           </span>
                           {hasBreakpoint && (
-                            <Circle size={10} className="text-red-500 fill-red-500 animate-pulse" />
+                            <Circle size={10} className={`fill-current animate-pulse ${bp.type === 'CONDITIONAL' ? 'text-yellow-500' : 'text-red-500'}`} />
                           )}
                           <span>{i+1}</span>
                         </div>
@@ -467,9 +750,28 @@ export default function AssemblyVisualizer() {
                 <button onClick={executeStep} disabled={isPlaying} className="toolbar-btn toolbar-btn-blue" title="单步执行 (F10)">
                    <StepForward size={18} />
                 </button>
+                <button onClick={stepBack} disabled={isPlaying || !canUndo} className="toolbar-btn hover:text-orange-500 dark:hover:text-orange-400 hover:border-orange-200 dark:hover:border-orange-500/30" title="回退一步">
+                   <Undo size={18} />
+                </button>
                 <button onClick={() => reload(code)} className="toolbar-btn toolbar-btn-green" title="重置">
                    <RotateCcw size={18} />
                 </button>
+                
+                <div className="w-px h-6 bg-gray-300 dark:bg-neutral-700 mx-1"></div>
+                
+                <button onClick={exportProject} className="toolbar-btn hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-500/30" title="导出项目">
+                   <Download size={18} />
+                </button>
+                <button onClick={() => projectImportRef.current.click()} className="toolbar-btn hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-500/30" title="导入项目">
+                   <Upload size={18} />
+                </button>
+                <input 
+                    type="file" 
+                    ref={projectImportRef} 
+                    onChange={handleProjectImport} 
+                    className="hidden" 
+                    accept=".json"
+                />
               </div>
               
               {/* 速度控制 */}
@@ -527,6 +829,13 @@ export default function AssemblyVisualizer() {
                    <StepForward size={14} /> 单步
                 </button>
                 <button 
+                  onClick={stepBack} 
+                  disabled={isPlaying || !canUndo} 
+                  className="mobile-btn-secondary"
+                >
+                   <Undo size={14} />
+                </button>
+                <button 
                   onClick={() => reload(code)} 
                   className="mobile-btn-icon"
                 >
@@ -562,6 +871,12 @@ export default function AssemblyVisualizer() {
                         className={`view-mode-btn ${viewMode === 'stack' ? 'active' : ''}`}
                     >
                         <Layers size={14}/> <span className="hidden sm:inline">STACK</span>
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('breakpoints')}
+                        className={`view-mode-btn ${viewMode === 'breakpoints' ? 'active' : ''}`}
+                    >
+                        <Circle size={14}/> <span className="hidden sm:inline">BREAK</span>
                     </button>
                  </div>
                  <div className="ip-badge">
@@ -628,15 +943,26 @@ export default function AssemblyVisualizer() {
                     </div>
                   </div>
               ) : viewMode === 'memory' ? (
-                  <MemoryView memory={memory} sp={registers.SP} registers={registers} ds={registers.DS} />
+                  <MemoryView memory={memory} setMemory={setMemory} sp={registers.SP} registers={registers} ds={registers.DS} />
               ) : viewMode === 'watch' ? (
                   <WatchWindow 
                     watchVariables={watchVariables} 
                     symbolTable={symbolTable} 
                     memory={memory} 
+                    registers={registers}
                     ds={registers.DS}
                     onRemove={removeWatchVariable}
                     onAdd={addWatchVariable}
+                  />
+              ) : viewMode === 'breakpoints' ? (
+                  <BreakpointsPanel 
+                      breakpoints={breakpoints}
+                      dataBreakpoints={dataBreakpoints}
+                      onRemoveBreakpoint={removeBreakpoint}
+                      onUpdateBreakpoint={updateBreakpoint}
+                      onAddDataBreakpoint={addDataBreakpoint}
+                      onRemoveDataBreakpoint={removeDataBreakpoint}
+                      onToggleDataBreakpoint={toggleDataBreakpoint}
                   />
               ) : (
                   <CallStack callStack={callStack} />

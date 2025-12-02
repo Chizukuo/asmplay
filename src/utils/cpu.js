@@ -72,6 +72,7 @@ class CpuContext {
         this.nextPc = null;
         this.interrupt = null; // { type: 'INT', val: '21H' }
         this.error = null;
+        this.memoryWrites = []; // Track memory writes for data breakpoints
     }
 
     // 计算物理地址
@@ -95,9 +96,11 @@ class CpuContext {
         
         if (size === 1) {
             this.memory[physAddr] = val & 0xFF;
+            this.memoryWrites.push({ address: physAddr, value: val & 0xFF, size: 1 });
         } else {
             this.memory[physAddr] = val & 0xFF;
             this.memory[physAddr + 1] = (val >> 8) & 0xFF;
+            this.memoryWrites.push({ address: physAddr, value: val & 0xFFFF, size: 2 });
         }
     }
 
@@ -582,6 +585,80 @@ const INSTRUCTION_SET = {
     'CMC': (ctx) => { ctx.flags.CF = ctx.flags.CF ? 0 : 1; },
     'CLD': (ctx) => { ctx.flags.DF = 0; },
     'STD': (ctx) => { ctx.flags.DF = 1; },
+
+    // String Instructions
+    'MOVSB': (ctx) => {
+        const val = ctx.readMem(ctx.registers.SI, 1, ctx.registers.DS);
+        ctx.writeMem(ctx.registers.DI, val, 1, ctx.registers.ES);
+        const delta = ctx.flags.DF === 0 ? 1 : -1;
+        ctx.registers.SI = (ctx.registers.SI + delta) & 0xFFFF;
+        ctx.registers.DI = (ctx.registers.DI + delta) & 0xFFFF;
+    },
+    'MOVSW': (ctx) => {
+        const val = ctx.readMem(ctx.registers.SI, 2, ctx.registers.DS);
+        ctx.writeMem(ctx.registers.DI, val, 2, ctx.registers.ES);
+        const delta = ctx.flags.DF === 0 ? 2 : -2;
+        ctx.registers.SI = (ctx.registers.SI + delta) & 0xFFFF;
+        ctx.registers.DI = (ctx.registers.DI + delta) & 0xFFFF;
+    },
+    'CMPSB': (ctx) => {
+        const v1 = ctx.readMem(ctx.registers.SI, 1, ctx.registers.DS);
+        const v2 = ctx.readMem(ctx.registers.DI, 1, ctx.registers.ES);
+        const res = v1 - v2;
+        ctx.updateFlags(res, true, false, v1, v2);
+        const delta = ctx.flags.DF === 0 ? 1 : -1;
+        ctx.registers.SI = (ctx.registers.SI + delta) & 0xFFFF;
+        ctx.registers.DI = (ctx.registers.DI + delta) & 0xFFFF;
+    },
+    'CMPSW': (ctx) => {
+        const v1 = ctx.readMem(ctx.registers.SI, 2, ctx.registers.DS);
+        const v2 = ctx.readMem(ctx.registers.DI, 2, ctx.registers.ES);
+        const res = v1 - v2;
+        ctx.updateFlags(res, true, true, v1, v2);
+        const delta = ctx.flags.DF === 0 ? 2 : -2;
+        ctx.registers.SI = (ctx.registers.SI + delta) & 0xFFFF;
+        ctx.registers.DI = (ctx.registers.DI + delta) & 0xFFFF;
+    },
+    'SCASB': (ctx) => {
+        const v1 = ctx.registers.AX & 0xFF; // AL
+        const v2 = ctx.readMem(ctx.registers.DI, 1, ctx.registers.ES);
+        const res = v1 - v2;
+        ctx.updateFlags(res, true, false, v1, v2);
+        const delta = ctx.flags.DF === 0 ? 1 : -1;
+        ctx.registers.DI = (ctx.registers.DI + delta) & 0xFFFF;
+    },
+    'SCASW': (ctx) => {
+        const v1 = ctx.registers.AX;
+        const v2 = ctx.readMem(ctx.registers.DI, 2, ctx.registers.ES);
+        const res = v1 - v2;
+        ctx.updateFlags(res, true, true, v1, v2);
+        const delta = ctx.flags.DF === 0 ? 2 : -2;
+        ctx.registers.DI = (ctx.registers.DI + delta) & 0xFFFF;
+    },
+    'LODSB': (ctx) => {
+        const val = ctx.readMem(ctx.registers.SI, 1, ctx.registers.DS);
+        ctx.registers.AX = (ctx.registers.AX & 0xFF00) | (val & 0xFF);
+        const delta = ctx.flags.DF === 0 ? 1 : -1;
+        ctx.registers.SI = (ctx.registers.SI + delta) & 0xFFFF;
+    },
+    'LODSW': (ctx) => {
+        const val = ctx.readMem(ctx.registers.SI, 2, ctx.registers.DS);
+        ctx.registers.AX = val;
+        const delta = ctx.flags.DF === 0 ? 2 : -2;
+        ctx.registers.SI = (ctx.registers.SI + delta) & 0xFFFF;
+    },
+    'STOSB': (ctx) => {
+        const val = ctx.registers.AX & 0xFF;
+        ctx.writeMem(ctx.registers.DI, val, 1, ctx.registers.ES);
+        const delta = ctx.flags.DF === 0 ? 1 : -1;
+        ctx.registers.DI = (ctx.registers.DI + delta) & 0xFFFF;
+    },
+    'STOSW': (ctx) => {
+        const val = ctx.registers.AX;
+        ctx.writeMem(ctx.registers.DI, val, 2, ctx.registers.ES);
+        const delta = ctx.flags.DF === 0 ? 2 : -2;
+        ctx.registers.DI = (ctx.registers.DI + delta) & 0xFFFF;
+    },
 };
 
 // Aliases
@@ -628,7 +705,7 @@ export const executeCpuInstruction = (instruction, registers, memory, flags, sym
     const ctx = new CpuContext(registers, memory, symbolTable, segmentTable, labelMap, flags, callStack);
     ctx.nextPc = currentPc + 1; // Default next PC
 
-    const { op, args } = instruction;
+    const { op, args, prefix } = instruction;
     
     // Pre-process args to handle OFFSET keyword which might be split
     let realArgs = [];
@@ -641,10 +718,49 @@ export const executeCpuInstruction = (instruction, registers, memory, flags, sym
         }
     }
 
-    if (INSTRUCTION_SET[op]) {
-        INSTRUCTION_SET[op](ctx, realArgs);
-    } else {
-        console.warn(`Unknown opcode: ${op}`);
+    // Handle Prefix Logic
+    let shouldExecute = true;
+    let repeat = false;
+
+    if (prefix) {
+        // Check CX
+        if (ctx.registers.CX === 0) {
+            shouldExecute = false;
+            // If CX is 0 initially, REP instruction does nothing and moves to next instruction
+        } else {
+            repeat = true;
+        }
+    }
+
+    if (shouldExecute) {
+        if (INSTRUCTION_SET[op]) {
+            INSTRUCTION_SET[op](ctx, realArgs);
+        } else {
+            console.warn(`Unknown opcode: ${op}`);
+        }
+        
+        if (repeat) {
+            // Decrement CX
+            ctx.registers.CX = (ctx.registers.CX - 1) & 0xFFFF;
+            
+            // Check exit conditions
+            let exitLoop = false;
+            
+            if (ctx.registers.CX === 0) {
+                exitLoop = true;
+            }
+            
+            // ZF check for REPE/REPZ/REPNE/REPNZ
+            if (['REPE', 'REPZ'].includes(prefix)) {
+                if (ctx.flags.ZF === 0) exitLoop = true;
+            } else if (['REPNE', 'REPNZ'].includes(prefix)) {
+                if (ctx.flags.ZF === 1) exitLoop = true;
+            }
+            
+            if (!exitLoop) {
+                ctx.nextPc = currentPc; // Stay on same instruction
+            }
+        }
     }
 
     return {
@@ -653,6 +769,7 @@ export const executeCpuInstruction = (instruction, registers, memory, flags, sym
         newFlags: ctx.flags,
         newCallStack: ctx.callStack,
         nextPc: ctx.nextPc,
-        interrupt: ctx.interrupt
+        interrupt: ctx.interrupt,
+        memoryWrites: ctx.memoryWrites
     };
 };

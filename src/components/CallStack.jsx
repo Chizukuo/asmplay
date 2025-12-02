@@ -36,7 +36,7 @@ const CallStack = ({ callStack }) => {
               </div>
             ))}
              <div className="text-center py-1">
-                <ArrowUp size={10} className="mx-auto text-gray-400 dark:text-neutral-700 animate-bounce"/>
+                <ArrowUp size={10} className="mx-auto text-gray-400 dark:text-zinc-700 animate-bounce"/>
              </div>
           </div>
         )}

@@ -272,14 +272,26 @@ export const parseCode = (code) => {
     }
 
     // 改进的指令解析
-    const firstSpaceIdx = line.indexOf(' ');
+    let currentLine = line;
+    let prefix = null;
+    
+    // Check for prefix
+    const firstSpace = currentLine.indexOf(' ');
+    const firstToken = firstSpace === -1 ? currentLine : currentLine.substring(0, firstSpace);
+    
+    if (['REP', 'REPE', 'REPZ', 'REPNE', 'REPNZ'].includes(firstToken)) {
+        prefix = firstToken;
+        currentLine = currentLine.substring(firstToken.length).trim();
+    }
+
+    const firstSpaceIdx = currentLine.indexOf(' ');
     let op, argsStr;
     if (firstSpaceIdx === -1) {
-        op = line;
+        op = currentLine;
         argsStr = "";
     } else {
-        op = line.substring(0, firstSpaceIdx).trim();
-        argsStr = line.substring(firstSpaceIdx).trim();
+        op = currentLine.substring(0, firstSpaceIdx).trim();
+        argsStr = currentLine.substring(firstSpaceIdx).trim();
     }
     
     // 分割参数：处理方括号内的逗号
@@ -301,7 +313,7 @@ export const parseCode = (code) => {
         if (currentArg.trim()) args.push(currentArg.trim());
     }
     
-    instructions.push({ type: 'CMD', op, args, originalIndex: i, raw: rawLine });
+    instructions.push({ type: 'CMD', op, args, prefix, originalIndex: i, raw: rawLine });
   }
 
   // Pass 3: 生成伪机器码并写入 CS 段
