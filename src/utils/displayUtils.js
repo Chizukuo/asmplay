@@ -13,7 +13,9 @@ export const getCharFromCode = (code) => {
   if (CP437_MAP[code]) return CP437_MAP[code];
   // Basic ASCII
   if (code >= 32 && code <= 126) return String.fromCharCode(code);
-  // Extended ASCII fallback (Latin-1) or control chars
+  // Control characters (0-31) - treat as spaces except for special ones
+  if (code < 32) return ' ';
+  // Extended ASCII fallback (Latin-1) or use CP437 mapping
   return String.fromCharCode(code); 
 };
 
