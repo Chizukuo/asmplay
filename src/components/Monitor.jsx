@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { SCREEN_ROWS, SCREEN_COLS, DOS_PALETTE } from '../constants';
+import { getCharFromCode } from '../utils/displayUtils';
 
 const CHAR_WIDTH = 9;  // 字符宽
 const CHAR_HEIGHT = 16; // 字符高
@@ -55,7 +56,8 @@ const Monitor = ({ videoMemory, cursor, isWaitingForInput, screenCols = SCREEN_C
             const charCode = videoMemory[offset];
             const attr = videoMemory[offset + 1];
 
-            const char = String.fromCharCode(charCode || 32);
+            // 使用 CP437 字符映射
+            const char = getCharFromCode(charCode);
             
             // 解析属性
             const isBlink = (attr & 0x80) !== 0;

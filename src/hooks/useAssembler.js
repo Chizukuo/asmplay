@@ -103,10 +103,10 @@ export const useAssembler = () => {
     let interruptOccurred = false;
     let localKeyBuffer = [...keyBuffer];
 
-    // 光速模式：运行到程序结束
+    // 光速模式：运行到程序结束，但减小批处理大小以提高响应性和显示准确性
     const isLightSpeed = (speed === 0 && isPlaying);
-    // Optimize: Increase batch size for normal speeds too to handle loops better
-    const BATCH_SIZE = isLightSpeed ? 100000 : (speed < 10 ? 500 : 10);
+    // Reduce batch size for light speed mode to improve display accuracy
+    const BATCH_SIZE = isLightSpeed ? 1000 : (speed < 10 ? 500 : 10);
 
     for (let step = 0; step < BATCH_SIZE; step++) {
         while (currentPc < parsedInstructions.length && parsedInstructions[currentPc].type === 'EMPTY') {
@@ -253,10 +253,12 @@ export const useAssembler = () => {
         }
     }
 
+    // 批量更新状态以减少重渲染，提高性能
     setRegisters(newRegisters);
     setMemory(newMemory);
     setFlags(newFlags);
     setPc(currentPc);
+    // 确保视频内存正确同步
     setVideoMemory(new Uint8Array(videoRamView));
     setCursor(newCursor);
     setCallStack(newCallStack);
@@ -353,7 +355,18 @@ export const useAssembler = () => {
   const simulateKeyPress = useCallback((char) => {
       const charCode = char.charCodeAt(0);
       const scanCode = charCode; // 简化：扫描码=ASCII码
-      setKeyBuffer(prev => [...prev, { ascii: charCode, scanCode }]);
+      // 防止重复添加相同的按键（检查最后一个按键和时间戳）
+      setKeyBuffer(prev => {
+        const now = Date.now();
+        // 如果上一个按键是相同的且在50ms内，忽略（防止重复）
+        if (prev.length > 0) {
+          const lastKey = prev[prev.length - 1];
+          if (lastKey.ascii === charCode && lastKey.timestamp && (now - lastKey.timestamp) < 50) {
+            return prev; // 忽略重复按键
+          }
+        }
+        return [...prev, { ascii: charCode, scanCode, timestamp: now }];
+      });
       setLastKeyPressed({ ascii: charCode, scanCode, timestamp: Date.now() });
   }, []);
 

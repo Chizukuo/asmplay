@@ -204,46 +204,51 @@ export const handleBiosInterrupt = (regs, currentMemory, currentCursor, videoMem
       const endCol = regs.DX & 0x00FF;
 
       if (al === 0) {
-         // Clear window
+         // Clear window - ensure we don't exceed boundaries
          for (let r = startRow; r <= endRow && r < SCREEN_ROWS; r++) {
            for (let c = startCol; c <= endCol && c < currentCols; c++) {
+             // Make sure we don't write beyond video memory
              writeCharToVideoMemory(videoMemory, r, c, 0x20, bh, currentCols);
            }
          }
       } else {
           // Scroll logic
           const lines = al;
-          const width = endCol - startCol + 1;
-          const height = endRow - startRow + 1;
           
           if (ah === 0x06) { // Scroll Up
-              for (let r = startRow; r <= endRow; r++) {
-                  for (let c = startCol; c <= endCol; c++) {
+              // Process from top to bottom to avoid overwriting data we need
+              for (let r = startRow; r <= endRow && r < SCREEN_ROWS; r++) {
+                  for (let c = startCol; c <= endCol && c < currentCols; c++) {
                       let srcRow = r + lines;
                       let charCode = 0x20;
                       let attr = bh;
                       
-                      if (srcRow <= endRow) {
+                      if (srcRow <= endRow && srcRow < SCREEN_ROWS) {
                           // Copy from lower line
                           const srcIdx = (srcRow * currentCols + c) * 2;
-                          charCode = videoMemory[srcIdx];
-                          attr = videoMemory[srcIdx + 1];
+                          if (srcIdx + 1 < videoMemory.length) {
+                              charCode = videoMemory[srcIdx];
+                              attr = videoMemory[srcIdx + 1];
+                          }
                       }
                       writeCharToVideoMemory(videoMemory, r, c, charCode, attr, currentCols);
                   }
               }
           } else { // Scroll Down (AH=07H)
-              for (let r = endRow; r >= startRow; r--) {
-                  for (let c = startCol; c <= endCol; c++) {
+              // Process from bottom to top to avoid overwriting data we need
+              for (let r = Math.min(endRow, SCREEN_ROWS - 1); r >= startRow; r--) {
+                  for (let c = startCol; c <= endCol && c < currentCols; c++) {
                       let srcRow = r - lines;
                       let charCode = 0x20;
                       let attr = bh;
                       
-                      if (srcRow >= startRow) {
+                      if (srcRow >= startRow && srcRow >= 0) {
                           // Copy from upper line
                           const srcIdx = (srcRow * currentCols + c) * 2;
-                          charCode = videoMemory[srcIdx];
-                          attr = videoMemory[srcIdx + 1];
+                          if (srcIdx + 1 < videoMemory.length) {
+                              charCode = videoMemory[srcIdx];
+                              attr = videoMemory[srcIdx + 1];
+                          }
                       }
                       writeCharToVideoMemory(videoMemory, r, c, charCode, attr, currentCols);
                   }

@@ -59,6 +59,9 @@ export default function AssemblyVisualizer() {
   // 全局键盘监听 - 当程序运行时捕获按键
   useEffect(() => {
     const handleGlobalKeyPress = (e) => {
+      // 忽略修饰键单独按下
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      
       if (isWaitingForInput) {
         // 等待输入模式：直接处理输入（只接受大写字母、数字）
         e.preventDefault();
@@ -78,8 +81,9 @@ export default function AssemblyVisualizer() {
       }
     };
 
-    window.addEventListener('keypress', handleGlobalKeyPress);
-    return () => window.removeEventListener('keypress', handleGlobalKeyPress);
+    // 使用 keydown 事件以确保所有按键都能被捕获
+    window.addEventListener('keydown', handleGlobalKeyPress);
+    return () => window.removeEventListener('keydown', handleGlobalKeyPress);
   }, [isPlaying, isWaitingForInput, simulateKeyPress, handleInput]);
 
   const toggleTheme = () => {
