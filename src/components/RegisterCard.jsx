@@ -18,7 +18,7 @@ const RegisterCard = ({ name, val }) => {
     <div className={`
       relative overflow-hidden rounded-lg border transition-all duration-300
       ${highlight 
-        ? 'bg-blue-50 dark:bg-amber-900/20 border-blue-400 dark:border-amber-500 shadow-glow dark:shadow-glow-amber scale-105 z-10' 
+        ? 'bg-blue-50 dark:bg-amber-900/20 border-blue-400 dark:border-amber-500 shadow-glow dark:shadow-glow-amber z-10' 
         : 'bg-white dark:bg-zinc-800/50 border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
       }
     `}>
